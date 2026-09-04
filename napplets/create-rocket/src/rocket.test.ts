@@ -46,6 +46,12 @@ describe("rocket ignition", () => {
     await expect(publishIgnition(publish, template)).resolves.toBe("event-id");
     expect(publish).toHaveBeenCalledWith(template, { toOutbox: true });
   });
+  it("allows custom publish options such as explicit relays with toOutbox false", async () => {
+    const publish = vi.fn().mockResolvedValue({ ok: true, event: { id: "event-id-2" } });
+    const template = buildIgnitionTemplate(draft(), 1);
+    await expect(publishIgnition(publish, template, { relays: ["wss://relay.example"], toOutbox: false })).resolves.toBe("event-id-2");
+    expect(publish).toHaveBeenCalledWith(template, { relays: ["wss://relay.example"], toOutbox: false });
+  });
   it("surfaces structured publish failure", async () => {
     await expect(publishIgnition(vi.fn().mockResolvedValue({ ok: false, error: "rejected" }), buildIgnitionTemplate(draft(), 1))).rejects.toThrow("rejected");
   });
