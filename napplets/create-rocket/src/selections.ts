@@ -62,7 +62,7 @@ function eligibleProblemHead(result: ChoiceResult): boolean {
     item[0] === "p" && item[1] === result.event.pubkey && (item[3] === "maintainer" || item[3] === undefined));
 }
 
-function problemHead(results: ChoiceResult[], coordinate: string): ChoiceResult {
+function problemHead(results: ChoiceResult[], _coordinate: string): ChoiceResult {
   const referenced = new Set(results.flatMap(({ event }) => event.tags
     .filter((item) => item[0] === "e" && item[3] === "previous")
     .map((item) => item[1])
@@ -71,8 +71,10 @@ function problemHead(results: ChoiceResult[], coordinate: string): ChoiceResult 
   const eligible = heads.filter(eligibleProblemHead);
   const newestTimestamp = eligible.length ? Math.max(...eligible.map(({ event }) => event.created_at)) : undefined;
   const current = eligible.filter(({ event }) => event.created_at === newestTimestamp);
-  if (current.length !== 1) throw new Error(`Problem ${coordinate} has unresolved current heads.`);
-  return current[0]!;
+  if (current.length === 1) return current[0]!;
+  if (current.length > 1) return newest(current);
+  if (eligible.length) return newest(eligible);
+  return newest(results);
 }
 
 function excerpt(value: string, fallback: string): string {
@@ -87,17 +89,18 @@ export function problemChoices(results: readonly ChoiceResult[], fallbackRelays:
   for (const result of uniqueResults.values()) {
     const { event } = result;
     const coordinate = problemCoordinate(result);
-    if (event.kind !== 31971 || tag(event, "A")?.[1] !== ROOT_PROBLEM_COORDINATE || !PROBLEM_COORDINATE.test(coordinate)) continue;
+    if (event.kind !== 31971 || !PROBLEM_COORDINATE.test(coordinate)) continue;
     const problemId = tag(event, "d")?.[1]?.trim();
     if (!problemId || !HEX_64.test(problemId) || coordinate.split(":")[2] !== problemId) continue;
     const group = groups.get(coordinate) ?? [];
     group.push(result);
     groups.set(coordinate, group);
   }
-  if (!groups.has(ROOT_PROBLEM_COORDINATE)) throw new Error("Root problem was not found in returned problem tree events.");
+  if (!groups.size) return [];
 
   const choices = new Map<string, RocketReferenceChoice>();
   const children = new Map<string, string[]>();
+  const hasParent = new Set<string>();
   for (const [coordinate, group] of groups) {
     const current = problemHead(group, coordinate);
     const title = tag(current.event, "title")?.[1]?.trim() || excerpt(current.event.content, "Untitled problem");
@@ -114,6 +117,7 @@ export function problemChoices(results: readonly ChoiceResult[], fallbackRelays:
       const siblings = children.get(parent) ?? [];
       if (!siblings.includes(coordinate)) siblings.push(coordinate);
       children.set(parent, siblings);
+      hasParent.add(coordinate);
     }
   }
   for (const siblings of children.values()) siblings.sort((left, right) =>
@@ -129,7 +133,27 @@ export function problemChoices(results: readonly ChoiceResult[], fallbackRelays:
     ordered.push({ ...choice, depth });
     for (const child of children.get(coordinate) ?? []) visit(child, depth + 1);
   };
-  visit(ROOT_PROBLEM_COORDINATE, 0);
+
+  const rootCoordinates = [...choices.keys()].filter((coordinate) => {
+    if (hasParent.has(coordinate)) return false;
+    const current = problemHead(groups.get(coordinate)!, coordinate);
+    const rootTag = tag(current.event, "A")?.[1];
+    if (rootTag && rootTag !== coordinate && groups.has(rootTag)) {
+      return false;
+    }
+    return true;
+  });
+
+  rootCoordinates.sort((left, right) => {
+    if (left === ROOT_PROBLEM_COORDINATE) return -1;
+    if (right === ROOT_PROBLEM_COORDINATE) return 1;
+    return choices.get(left)!.title.localeCompare(choices.get(right)!.title) || left.localeCompare(right);
+  });
+
+  for (const root of rootCoordinates) {
+    visit(root, 0);
+  }
+
   return ordered;
 }
 

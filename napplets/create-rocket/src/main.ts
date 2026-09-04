@@ -185,7 +185,7 @@ async function loadReferences(pubkey?: string): Promise<void> {
     }
 
     const [problemResponse, repositoryResponse, relayPlan] = await Promise.all([
-      outbox.query({ kinds: [31971], "#A": [ROOT_PROBLEM_COORDINATE] }, { timeoutMs: 8000 }),
+      outbox.query({ kinds: [31971], limit: 500 }, { limit: 500, timeoutMs: 8000 }),
       outbox.query({ kinds: [30617], authors: [currentPubkey] }, { authors: [currentPubkey], timeoutMs: 8000 }),
       outbox.resolveRelays({ pubkey: currentPubkey, direction: "read" }).catch((error: unknown) => {
         console.warn("Rocket reference relay fallback could not be resolved", { pubkey: currentPubkey, error });
@@ -201,7 +201,7 @@ async function loadReferences(pubkey?: string): Promise<void> {
 
     const problems = problemChoices(problemResponse.events as ChoiceResult[]);
     const repositories = repositoryChoices(repositoryResponse.events as ChoiceResult[], currentPubkey, relayPlan.relays);
-    problems.length ? renderChoices(problemOptions, "problem", problems) : renderState(problemOptions, "No problems found in the NOSTROCKET tree.", "empty");
+    problems.length ? renderChoices(problemOptions, "problem", problems) : renderState(problemOptions, "No problems found.", "empty");
     repositories.length ? renderChoices(repositoryOptions, "repository", repositories) : renderState(repositoryOptions, "have you logged any git repositories?", "empty");
     const incomplete = problemResponse.incomplete || problemResponse.error || repositoryResponse.incomplete || repositoryResponse.error;
     referenceStatus.dataset.state = incomplete ? "warning" : "idle";
