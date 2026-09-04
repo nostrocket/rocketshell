@@ -47,11 +47,18 @@ export function buildMeritRequest(draft: MeritRequestDraft, createdAt: number): 
   return { kind: 1409, created_at: createdAt, content: "", tags };
 }
 
+export interface PublishOptions {
+  relays?: string[];
+  toOutbox?: boolean;
+  toInboxes?: string[];
+}
+
 export async function publishMeritRequest(
-  publish: (template: MeritRequestTemplate, options: { toOutbox: true }) => Promise<{ ok: boolean; event?: { id: string; pubkey?: string }; error?: string }>,
-  template: MeritRequestTemplate
+  publish: (template: MeritRequestTemplate, options: PublishOptions) => Promise<{ ok: boolean; event?: { id: string; pubkey?: string }; error?: string }>,
+  template: MeritRequestTemplate,
+  options: PublishOptions = { toOutbox: true }
 ): Promise<{ id: string; pubkey?: string }> {
-  const result = await publish(template, { toOutbox: true });
+  const result = await publish(template, options);
   if (!result.ok || !result.event?.id) throw new Error(result.error ?? "Shell did not return a published merit request.");
   return { id: result.event.id, pubkey: result.event.pubkey };
 }

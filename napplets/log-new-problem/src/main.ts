@@ -291,8 +291,16 @@ async function publishProblem() {
     const draft = readDraft(collectProblemFields(problemEditor), markdownEditor.getValue());
     const random = crypto.getRandomValues(new Uint8Array(32));
     const template = buildProblemTemplate(pubkey, createProblemId(random), draft, Math.floor(Date.now() / 1000), parent);
-    const recipients = parent ? Array.from(new Set([parent.owner, parent.rootOwner])) : [];
-    const result = await outbox.publish(template, recipients.length ? { toInboxes: recipients } : undefined);
+    const targetRelays = Array.from(new Set([
+      ...(parent?.relay ? [parent.relay] : []),
+      ...(parent?.rootRelay ? [parent.rootRelay] : []),
+      ...(draft.rocket?.relay ? [draft.rocket.relay] : []),
+      ...(draft.repository?.relay ? [draft.repository.relay] : []),
+    ]));
+    const result = await outbox.publish(template, targetRelays.length ? {
+      relays: targetRelays,
+      toOutbox: false,
+    } : undefined);
     setStatus(publishSuccessMessage(result), "success");
     resetProblemEditorFields(problemEditor, markdownEditor, count);
     animate(statusLine, {});
