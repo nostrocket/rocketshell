@@ -200,10 +200,10 @@ async function loadReferences(pubkey?: string): Promise<void> {
     console.error("Rocket problem and repository choices could not be loaded", { error });
     renderState(problemOptions, "Problems could not be loaded.", "error");
     renderState(repositoryOptions, "Git repositories could not be loaded.", "error");
-    referenceStatus.dataset.state = "error";
-    referenceStatus.value = "Check your relay connection, then try again.";
+    referenceStatus.dataset.state = "warning";
+    referenceStatus.value = "Optional references could not be loaded. Check your relay connection to retry, or continue without them.";
     retryReferences.hidden = false;
-    previewButton.disabled = true;
+    previewButton.disabled = false;
   }
 }
 
