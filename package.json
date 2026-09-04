@@ -1,7 +1,7 @@
 {
   "name": "kehto-applesauce-host-platform",
   "private": true,
-  "packageManager": "pnpm@8.15.5",
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
     "build": "pnpm --filter '@platform/*-napplet' build && pnpm -r --filter '!@platform/*-napplet' --if-present build",
     "check": "pnpm -r --if-present check",
