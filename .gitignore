@@ -7,3 +7,4 @@ test-results/
 *.tsbuildinfo
 .DS_Store
 skills-lock.json
+.napplet/
