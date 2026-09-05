@@ -27,6 +27,15 @@ let loadVersion = 0;
 let liveRetries = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
+/* Canonical NOSTROCKET ignition author (the protocol's reference rocket). Seeding
+   discovery with it guarantees the outbox pass has at least one author whose
+   NIP-65 relays can be resolved, even when the local read tier returns nothing. */
+const SEED_AUTHORS = ["d91191e30e00444b942c0e82cad470b32af171764c2275bee0bd99377efd4075"] as const;
+
+function knownAuthors(): string[] {
+  return [...new Set([...SEED_AUTHORS, ...[...eventsById.values()].map((event) => event.pubkey)])];
+}
+
 function clearAvatars(): void {
   for (const url of avatarUrls.values()) URL.revokeObjectURL(url);
   avatarUrls = new Map();
@@ -263,7 +272,7 @@ function parseCoordinate(event: NostrEvent): string | undefined {
 function subscribeLive(version: number): void {
   setLive("connecting");
   try {
-    const subscription = outbox.subscribe([{ kinds: [31108] }], { timeoutMs: 8000 });
+    const subscription = outbox.subscribe([{ kinds: [31108] }], { authors: knownAuthors(), timeoutMs: 8000 });
     const handlers = liveEventHandlers(version);
     subscription.on("event", (result) => handlers.onEvent(result.event as NostrEvent));
     subscription.on("closed", (reason) => handlers.onClosed(typeof reason === "string" ? reason : "closed by shell"));
@@ -342,15 +351,22 @@ async function load(): Promise<void> {
   app.innerHTML = `<section class="boot-state" aria-live="polite"><div class="pulse"></div><p>Querying kind 31108 ignitions through the author outbox…</p></section>`;
   if (!reducedMotion) gsap.fromTo(".pulse", { scaleX: .2, opacity: .35 }, { scaleX: 1, opacity: 1, duration: .8, repeat: -1, yoyo: true, ease: "sine.inOut", transformOrigin: "0 50%" });
   try {
-    const response = await outbox.query([{ kinds: [31108], limit: 500 }], { limit: 500, timeoutMs: 8000 });
+    // Seed pass: read the shell's configured read tier for anything directly reachable.
+    const seedResponse = await outbox.query([{ kinds: [31108], limit: 500 }], { limit: 500, timeoutMs: 8000 });
     if (version !== loadVersion) return;
-    for (const { event } of response.events) eventsById.set(event.id, event as NostrEvent);
-    if (response.error) console.warn("Rocket discovery query returned partial results", { error: response.error });
+    for (const { event } of seedResponse.events) eventsById.set(event.id, event as NostrEvent);
+
+    // Outbox pass: resolve each known rocket author's NIP-65 outbox relays and query them.
+    const outboxResponse = await outbox.query([{ kinds: [31108], limit: 500 }], { authors: knownAuthors(), limit: 500, timeoutMs: 8000 });
+    if (version !== loadVersion) return;
+    for (const { event } of outboxResponse.events) eventsById.set(event.id, event as NostrEvent);
+    if (outboxResponse.error) console.warn("Rocket outbox discovery returned partial results", { error: outboxResponse.error });
+
     rebuildForest();
     renderChrome();
     renderForest({ animate: true });
     const status = document.querySelector<HTMLOutputElement>("#status");
-    if (status && response.incomplete) status.textContent = "Discovery results are partial; some relays did not respond.";
+    if (status && (seedResponse.incomplete || outboxResponse.incomplete)) status.textContent = "Discovery results are partial; some relays did not respond.";
     subscribeLive(version);
     await loadProfiles(version);
   } catch (error) {
