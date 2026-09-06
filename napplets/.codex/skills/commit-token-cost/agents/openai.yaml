@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commit Token Cost"
+  short_description: "Estimate API-equivalent cost per Git commit"
+  default_prompt: "Use $commit-token-cost to estimate token usage and API-equivalent USD cost for recent commits."
