@@ -10,6 +10,7 @@ import {
   effectiveClaim,
   installerSha256,
   notaryInstallLocations,
+  notaryStatusMessage,
   resolveNode,
   selectCurrentNodes,
   verifyNotaryInstaller,
@@ -109,6 +110,12 @@ test("Notary installation stays explicit and platform-bound", () => {
   expect(() => assertNotaryPlatform("linux", "arm64")).toThrow(/macOS only/);
   expect(() => assertNotaryPlatform("darwin", "x64")).toThrow(/Apple Silicon only/);
   expect(NOTARY_INSTALLER_URL).toMatch(/\/157e0aae107ca4d3f25ed6f2b6885882b12d70eb\//);
+});
+
+test("Notary status gives the next safe setup step", () => {
+  expect(notaryStatusMessage({ installed: false, connected: false })).toMatch(/explicitly request.*install-notary/);
+  expect(notaryStatusMessage({ installed: true, connected: false })).toMatch(/local terminal/);
+  expect(notaryStatusMessage({ installed: true, connected: true })).toBe("Notary setup: ready");
 });
 
 test("Notary installer content must match reviewed checksum", () => {

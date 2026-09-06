@@ -26,7 +26,7 @@ const sessionDirectory = path.join(homedir(), ".config", "nostrocket");
 const sessionPath = path.join(sessionDirectory, "notary-nip46.nbunksec");
 
 const usage = () => {
-  console.error("usage: nostrocket.sh actionable | inspect <problem-id> | children <problem-id> | claim <problem-id> | patch <problem-id> --proof <https-url> | install-notary | connect");
+  console.error("usage: nostrocket.sh actionable | inspect <problem-id> | children <problem-id> | claim <problem-id> | patch <problem-id> --proof <https-url> | notary-status | install-notary | connect");
   process.exitCode = 2;
 };
 
@@ -45,6 +45,36 @@ const findInstalledNotary = async () => {
     }
   }
   return null;
+};
+
+export const notaryStatusMessage = ({ installed, connected }) => {
+  if (connected) return "Notary setup: ready";
+  if (installed) return "Notary setup: installed, not connected; copy the bunker URI from Notary and run 'bash scripts/nostrocket.sh connect' in your local terminal";
+  return "Notary setup: not installed; explicitly request '$nostrocket install-notary' before connecting";
+};
+
+const hasNotarySession = async () => {
+  try {
+    const metadata = await lstat(sessionPath);
+    return metadata.isFile() && !metadata.isSymbolicLink() && (metadata.mode & 0o077) === 0;
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw new Error(`could not inspect Notary session: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+const notaryStatus = async () => {
+  const [installed, connected] = await Promise.all([
+    findInstalledNotary(),
+    hasNotarySession(),
+  ]);
+  console.log(notaryStatusMessage({ installed: Boolean(installed), connected }));
+};
+
+const requireNotarySession = async () => {
+  if (await hasNotarySession()) return;
+  const installed = await findInstalledNotary();
+  throw new Error(notaryStatusMessage({ installed: Boolean(installed), connected: false }));
 };
 
 export const assertNotaryPlatform = (platform = process.platform, architecture = process.arch) => {
@@ -408,11 +438,7 @@ const relaySelections = async (pubkey) => {
 
 const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const signAndPublish = async (draft) => {
-  try {
-    await access(sessionPath, fsConstants.R_OK);
-  } catch (error) {
-    throw new Error(`Notary is not connected; run 'bash scripts/nostrocket.sh connect' first (${error instanceof Error ? error.code ?? error.message : String(error)})`);
-  }
+  await access(sessionPath, fsConstants.R_OK);
   const sessionMetadata = await lstat(sessionPath);
   if (!sessionMetadata.isFile() || sessionMetadata.isSymbolicLink()) throw new Error("NIP-46 session path is not a regular file");
   if ((sessionMetadata.mode & 0o077) !== 0) throw new Error("NIP-46 session file permissions must be 0600");
@@ -471,6 +497,7 @@ export const workflowDraft = (node, action, content, now = Math.floor(Date.now()
 };
 
 const mutate = async (action, id, proof) => {
+  await requireNotarySession();
   const { nodes, reachable } = await loadDag();
   const node = resolveNode(nodes, id);
   if (!node.resolved) throw new Error(`problem current revision unresolved: ${node.reason}`);
@@ -504,6 +531,7 @@ export const main = async (argv) => {
     if (proof.protocol !== "https:") throw new Error("patch proof must use https://");
     return mutate("patched", args[0], proof.href);
   }
+  if (command === "notary-status" && args.length === 0) return notaryStatus();
   if (command === "install-notary" && args.length === 0) return installNotary();
   if (command === "connect" && args.length === 0) return connect();
   usage();
