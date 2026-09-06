@@ -3,10 +3,16 @@ import {
   ROOT_COORDINATE,
   ROOT_ID,
   ROOT_OWNER,
+  NOTARY_INSTALLER_SHA256,
+  NOTARY_INSTALLER_URL,
   actionableNodes,
+  assertNotaryPlatform,
   effectiveClaim,
+  installerSha256,
+  notaryInstallLocations,
   resolveNode,
   selectCurrentNodes,
+  verifyNotaryInstaller,
   workflowDraft,
 } from "../scripts/nostrocket.mjs";
 
@@ -92,4 +98,21 @@ test("workflow drafts match the NIP-1971 contributor tag shape", () => {
     ["p", ROOT_OWNER, "wss://problems.example"],
     ["patched"],
   ]);
+});
+
+test("Notary installation stays explicit and platform-bound", () => {
+  expect(notaryInstallLocations("/Users/tester")).toEqual([
+    "/Applications/Notary.app",
+    "/Users/tester/Applications/Notary.app",
+  ]);
+  expect(() => assertNotaryPlatform("darwin", "arm64")).not.toThrow();
+  expect(() => assertNotaryPlatform("linux", "arm64")).toThrow(/macOS only/);
+  expect(() => assertNotaryPlatform("darwin", "x64")).toThrow(/Apple Silicon only/);
+  expect(NOTARY_INSTALLER_URL).toMatch(/\/157e0aae107ca4d3f25ed6f2b6885882b12d70eb\//);
+});
+
+test("Notary installer content must match reviewed checksum", () => {
+  expect(installerSha256(Buffer.from("abc"))).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  expect(NOTARY_INSTALLER_SHA256).toHaveLength(64);
+  expect(() => verifyNotaryInstaller(Buffer.from("changed installer"))).toThrow(/checksum mismatch/);
 });

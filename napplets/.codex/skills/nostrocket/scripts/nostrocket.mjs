@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { access, chmod, lstat, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { access, chmod, lstat, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -17,14 +18,81 @@ export const BOOTSTRAP_RELAYS = [
   "wss://bucket.coracle.social",
 ];
 const CLAIM_SECONDS = 86_400;
+export const NOTARY_INSTALLER_URL = "https://raw.githubusercontent.com/zig-nostr/notary/157e0aae107ca4d3f25ed6f2b6885882b12d70eb/scripts/install-macos.sh";
+export const NOTARY_INSTALLER_SHA256 = "30a2216c7986905aee4f5c49a4904034217687ad765d6b67fa32d15aba2c77d5";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = path.resolve(scriptDirectory, "../../../../..");
 const sessionDirectory = path.join(homedir(), ".config", "nostrocket");
 const sessionPath = path.join(sessionDirectory, "notary-nip46.nbunksec");
 
 const usage = () => {
-  console.error("usage: nostrocket.sh actionable | inspect <problem-id> | children <problem-id> | claim <problem-id> | patch <problem-id> --proof <https-url> | connect");
+  console.error("usage: nostrocket.sh actionable | inspect <problem-id> | children <problem-id> | claim <problem-id> | patch <problem-id> --proof <https-url> | install-notary | connect");
   process.exitCode = 2;
+};
+
+export const notaryInstallLocations = (userHome = homedir()) => [
+  "/Applications/Notary.app",
+  path.join(userHome, "Applications", "Notary.app"),
+];
+
+const findInstalledNotary = async () => {
+  for (const candidate of notaryInstallLocations()) {
+    try {
+      const metadata = await lstat(candidate);
+      if (metadata.isDirectory()) return candidate;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw new Error(`could not inspect ${candidate}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return null;
+};
+
+export const assertNotaryPlatform = (platform = process.platform, architecture = process.arch) => {
+  if (platform !== "darwin") throw new Error("Notary installer supports macOS only");
+  if (architecture !== "arm64") throw new Error("Notary installer supports Apple Silicon only; build from source on Intel Macs");
+};
+
+export const installerSha256 = (contents) => createHash("sha256").update(contents).digest("hex");
+
+export const verifyNotaryInstaller = (contents) => {
+  const actual = installerSha256(contents);
+  if (actual !== NOTARY_INSTALLER_SHA256) throw new Error(`official Notary installer checksum mismatch: expected ${NOTARY_INSTALLER_SHA256}, got ${actual}`);
+};
+
+const runInstaller = (installerPath) => new Promise((resolve, reject) => {
+  const child = spawn("/bin/bash", [installerPath], { stdio: ["ignore", "inherit", "inherit"] });
+  child.on("error", (error) => reject(new Error(`Notary installer could not start: ${error.message}`)));
+  child.on("close", (code) => {
+    if (code === 0) resolve();
+    else reject(new Error(`Notary installer exited ${code}`));
+  });
+});
+
+const installNotary = async () => {
+  const existing = await findInstalledNotary();
+  if (existing) {
+    console.log(`Notary already installed at ${existing}`);
+    return;
+  }
+  assertNotaryPlatform();
+  const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "nostrocket-notary-"));
+  const installerPath = path.join(temporaryDirectory, "install-macos.sh");
+  try {
+    const response = await fetch(NOTARY_INSTALLER_URL);
+    if (!response.ok) throw new Error(`official Notary installer download failed: HTTP ${response.status}`);
+    const contents = Buffer.from(await response.arrayBuffer());
+    verifyNotaryInstaller(contents);
+    await writeFile(installerPath, contents, { mode: 0o700, flag: "wx" });
+    console.log("Official Notary installer verified. Installing and opening Notary...");
+    await runInstaller(installerPath);
+    const installed = await findInstalledNotary();
+    if (!installed) throw new Error("Notary installer completed but Notary.app was not found");
+    console.log(`Notary installed at ${installed}`);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true }).catch((error) => {
+      console.error(`Failed to remove temporary Notary installer directory ${temporaryDirectory}:`, error);
+    });
+  }
 };
 
 const run = (command, args, input) => new Promise((resolve, reject) => {
@@ -436,6 +504,7 @@ export const main = async (argv) => {
     if (proof.protocol !== "https:") throw new Error("patch proof must use https://");
     return mutate("patched", args[0], proof.href);
   }
+  if (command === "install-notary" && args.length === 0) return installNotary();
   if (command === "connect" && args.length === 0) return connect();
   usage();
 };

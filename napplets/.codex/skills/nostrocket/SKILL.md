@@ -1,6 +1,6 @@
 ---
 name: nostrocket
-description: Find actionable NIP-1971 problems and inspect, list, claim, or patch problems in the Nostrocket DAG. Use for available work, open leaves, problem children, problem status, contributor claims, and solution proof publication. Contributor-only; excludes maintainer revisions and merit requests.
+description: Find actionable NIP-1971 problems and inspect, list, claim, or patch problems in the Nostrocket DAG, including installing and pairing the Notary NIP-46 signer. Use for available work, open leaves, problem children, problem status, Notary setup, contributor claims, and solution proof publication. Contributor-only; excludes maintainer revisions and merit requests.
 ---
 
 # Nostrocket
@@ -13,16 +13,27 @@ bash scripts/nostrocket.sh inspect '<problem-id>'
 bash scripts/nostrocket.sh children '<problem-id>'
 bash scripts/nostrocket.sh claim '<problem-id>'
 bash scripts/nostrocket.sh patch '<problem-id>' --proof '<https-url>'
+bash scripts/nostrocket.sh install-notary
 ```
 
 `actionable` always starts at the project root compiled into the command. Never
 ask for a root ID. “Open leaves” means `actionable`.
 
-Before the first write, pair the agent with Notary:
+Before the first write, install Notary when absent, then pair the agent:
 
 ```bash
+bash scripts/nostrocket.sh install-notary
 bash scripts/nostrocket.sh connect
 ```
+
+Run `install-notary` only after an explicit user request to install Notary. Never
+run it implicitly from `claim`, `patch`, or `connect`. It supports macOS Apple
+Silicon only, detects both system and user Applications folders, downloads the
+official installer pinned to a reviewed commit, verifies that installer's
+SHA-256, then lets the official installer download the latest release and verify
+its published digest when available. The official installer installs
+`Notary.app`, clears its quarantine attribute, and opens it. When Notary
+already exists, report its path and change nothing.
 
 Paste the `bunker://` URI at the hidden prompt. The command requests only
 `get_public_key` and `sign_event:1111`, then stores the NIP-46 client session in
@@ -42,6 +53,8 @@ arguments. Run `connect` in an interactive PTY.
   Notary NIP-46 signature, validate the signed kind-1111 event, and publish it.
 - `patch`: require an `https://` proof URL, reference the selected current
   revision, request a Notary signature, validate, and publish it.
+- `install-notary`: explicitly install official Notary on supported Macs; never
+  run as an automatic fallback.
 
 Claims and patches are public, irreversible Nostr writes. Run them only when the
 user explicitly asks to claim or patch that problem. The Notary approval screen

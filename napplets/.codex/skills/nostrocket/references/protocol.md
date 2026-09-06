@@ -6,6 +6,8 @@ Implementation source of truth:
   kind 1111 workflow tags, and 24-hour best-effort claims.
 - NIP-46: <https://github.com/nostr-protocol/nips/blob/master/46.md>
 - Notary: <https://github.com/zig-nostr/notary>
+- Official macOS installer:
+  <https://github.com/zig-nostr/notary/blob/main/scripts/install-macos.sh>
 - Applesauce Nostr Connect:
   <https://applesauce.build/signers/nostr-connect.html>
 
@@ -43,3 +45,14 @@ Patch proof is event content. No private tag or local wire convention is added.
   and signature before publication.
 - Publish to the actor's NIP-65 write relays and tagged recipients' read relays,
   falling back to bootstrap relays when no current relay list can be resolved.
+
+## Notary installation
+
+Installation is separate from signing and must be explicitly requested. Current
+official binary support is macOS on Apple Silicon. The bundled command downloads
+the official installer from reviewed Notary commit
+`157e0aae107ca4d3f25ed6f2b6885882b12d70eb`, requires SHA-256
+`30a2216c7986905aee4f5c49a4904034217687ad765d6b67fa32d15aba2c77d5`,
+then runs it. The upstream installer resolves the latest release, verifies its
+published digest when available, installs to `/Applications` or the user's
+Applications folder, clears quarantine, and opens Notary.
