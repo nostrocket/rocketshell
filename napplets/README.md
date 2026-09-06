@@ -11,6 +11,31 @@ Each direct child containing both `package.json#napplet` and `dist/index.html`
 is eligible for built-in discovery. Documentation directories and incomplete
 projects are ignored.
 
+## Finding and claiming DAG work
+
+Use the installed `nostrocket` skill for contributor work on the Nostrocket
+DAG. From an agent prompt, `$nostrocket actionable` lists reachable open leaves
+that have no current children, effective claim, or unresolved current-head
+fork. No root problem ID is needed.
+
+Review a candidate before claiming it:
+
+```text
+$nostrocket actionable
+$nostrocket inspect <problem-id>
+$nostrocket claim <problem-id>
+```
+
+`actionable` and `inspect` are read-only. `claim` publishes a public,
+irreversible kind-1111 Nostr event and requires approval through a paired Notary
+NIP-46 signer. If Notary is absent, request installation explicitly with
+`$nostrocket install-notary`; claiming never installs it automatically. Keep
+`bunker://` URIs, `nbunksec` values, and stored signer sessions secret.
+
+After a successful claim, record the published event ID and accepting relays.
+The skill supports contributor claims and solution proofs only; it does not
+publish maintainer revisions or request merits.
+
 ## Problem tracker media
 
 Problem descriptions may contain direct Markdown media references:

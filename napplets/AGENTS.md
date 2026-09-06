@@ -1,5 +1,24 @@
 # Napplet implementation rules
 
+## Nostrocket contributor workflow
+
+- For requests to find actionable work in the Nostrocket DAG, inspect a
+  problem, list its children, claim a problem, or publish solution proof,
+  activate and follow the installed `nostrocket` skill.
+- Use `nostrocket actionable` for open leaves. It starts from the configured
+  project root; never ask the user for a root problem ID.
+- Treat `actionable`, `inspect`, and `children` as read-only discovery. Inspect
+  a selected problem before asking to claim it.
+- Treat `claim` and `patch` as public, irreversible Nostr writes. Run either
+  only after an explicit user request, and report the published event ID and
+  accepting relays.
+- Claims require a paired Notary NIP-46 signer. Never install Notary
+  implicitly; run `install-notary` only when the user explicitly requests the
+  installation. Never expose a `bunker://` URI, `nbunksec` value, or stored
+  signer session.
+- This workflow is contributor-only. Do not publish maintainer revisions or
+  request merits through the `nostrocket` skill.
+
 ## Visual style
 
 - Always follow the established visual style of the existing built-in napplets.
