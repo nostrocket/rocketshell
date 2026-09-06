@@ -117,3 +117,17 @@
 - Describe the problem solved, not the solution, implementation, command, or
   files changed. Add a wrapped body only when needed for rationale, breaking
   changes, migrations, reverts, or issue references.
+- Include API-equivalent cost estimates in every final commit message using
+  these body trailers; keep them out of the subject:
+
+  ```text
+  Cost-USD: $<amount>
+  Cost-BTC: <integer> sats
+  ```
+
+- Produce cost trailers by explicitly invoking the repository
+  `$commit-token-cost` skill. Create
+  the commit after all required checks pass, calculate its estimate, then amend
+  only its message to add the trailers. Treat values as estimates for the
+  pre-amend commit because calculating them requires an existing commit. Do not
+  finalize or hand off a commit without both trailers.
