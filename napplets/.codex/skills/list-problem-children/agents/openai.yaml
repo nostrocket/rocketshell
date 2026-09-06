@@ -1,4 +1,0 @@
-interface:
-  display_name: "List Problem Children"
-  short_description: "Find direct children or claimable open leaves"
-  default_prompt: "Use $list-problem-children to list current direct children or claimable open leaf problems in this Nostr problem DAG."

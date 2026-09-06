@@ -1,0 +1,95 @@
+import { expect, test } from "vitest";
+import {
+  ROOT_COORDINATE,
+  ROOT_ID,
+  ROOT_OWNER,
+  actionableNodes,
+  effectiveClaim,
+  resolveNode,
+  selectCurrentNodes,
+  workflowDraft,
+} from "../scripts/nostrocket.mjs";
+
+const hex = (character) => character.repeat(64);
+const event = ({ id, problemId, owner = ROOT_OWNER, pubkey = owner, createdAt, status = "open", title = problemId, parents = [], previous = [] }) => ({
+  id,
+  pubkey,
+  created_at: createdAt,
+  kind: 31971,
+  content: `${title} body`,
+  tags: [
+    ["d", problemId],
+    ["title", title],
+    ["status", status],
+    ["a", `31971:${owner}:${problemId}`, "wss://problems.example", "origin"],
+    ["A", ROOT_COORDINATE, "wss://problems.example"],
+    ...parents.map((parent) => ["a", parent, "wss://problems.example"]),
+    ...previous.map((prior) => ["e", prior, "wss://problems.example", "previous", pubkey]),
+  ],
+});
+
+const root = event({ id: hex("0"), problemId: ROOT_ID, createdAt: 1, title: "Root" });
+const parentId = hex("a");
+const leafId = hex("b");
+const closedId = hex("c");
+const forkId = hex("d");
+const parent = event({ id: hex("1"), problemId: parentId, createdAt: 2, title: "Parent", parents: [ROOT_COORDINATE] });
+const oldLeaf = event({ id: hex("2"), problemId: leafId, createdAt: 3, title: "Old leaf", parents: [`31971:${ROOT_OWNER}:${parentId}`] });
+const leaf = event({ id: hex("3"), problemId: leafId, createdAt: 4, title: "Leaf", parents: [`31971:${ROOT_OWNER}:${parentId}`], previous: [oldLeaf.id] });
+const closed = event({ id: hex("4"), problemId: closedId, createdAt: 5, status: "closed", title: "Closed", parents: [ROOT_COORDINATE] });
+const forkA = event({ id: hex("5"), problemId: forkId, createdAt: 6, title: "Fork A", parents: [ROOT_COORDINATE] });
+const forkB = event({ id: hex("6"), problemId: forkId, createdAt: 6, title: "Fork B", parents: [ROOT_COORDINATE] });
+
+test("selects revisions and leaves equal-time forks unresolved", () => {
+  const nodes = selectCurrentNodes([root, parent, oldLeaf, leaf, closed, forkA, forkB]);
+  expect(nodes.get(`31971:${ROOT_OWNER}:${leafId}`).event.id).toBe(leaf.id);
+  expect(nodes.get(`31971:${ROOT_OWNER}:${forkId}`).resolved).toBe(false);
+  expect(nodes.get(`31971:${ROOT_OWNER}:${forkId}`).reason).toMatch(/fork/);
+});
+
+test("actionable means reachable unclaimed open selected leaf", () => {
+  const nodes = selectCurrentNodes([root, parent, oldLeaf, leaf, closed, forkA, forkB]);
+  expect(actionableNodes(nodes, [], 100).map((node) => node.event.id)).toEqual([leaf.id]);
+
+  const claim = {
+    id: hex("7"), pubkey: hex("e"), created_at: 10, kind: 1111, content: "claim",
+    tags: [["A", `31971:${ROOT_OWNER}:${leafId}`], ["a", `31971:${ROOT_OWNER}:${leafId}`], ["e", leaf.id], ["claim"]],
+  };
+  expect(actionableNodes(nodes, [claim], 100)).toEqual([]);
+  expect(effectiveClaim([claim], nodes.get(`31971:${ROOT_OWNER}:${leafId}`), 100).id).toBe(claim.id);
+  expect(effectiveClaim([claim], nodes.get(`31971:${ROOT_OWNER}:${leafId}`), 10 + 86_400)).toBeNull();
+});
+
+test("an unresolved child keeps its parent structural", () => {
+  const structuralId = hex("8");
+  const childForkId = hex("9");
+  const structural = event({ id: hex("a"), problemId: structuralId, createdAt: 8, title: "Structural", parents: [ROOT_COORDINATE] });
+  const childForkA = event({ id: hex("b"), problemId: childForkId, createdAt: 9, title: "Child fork A", parents: [`31971:${ROOT_OWNER}:${structuralId}`] });
+  const childForkB = event({ id: hex("c"), problemId: childForkId, createdAt: 9, title: "Child fork B", parents: [`31971:${ROOT_OWNER}:${structuralId}`] });
+  const nodes = selectCurrentNodes([root, structural, childForkA, childForkB]);
+  expect(actionableNodes(nodes, [], 100)).toEqual([]);
+});
+
+test("abbreviated IDs resolve only when unique", () => {
+  const nodes = selectCurrentNodes([root, parent, leaf]);
+  expect(resolveNode(nodes, `${leafId.slice(0, 8)}…${leafId.slice(-6)}`).event.id).toBe(leaf.id);
+  expect(() => resolveNode(nodes, "ffff")).toThrow(/matched 0/);
+});
+
+test("workflow drafts match the NIP-1971 contributor tag shape", () => {
+  const node = selectCurrentNodes([leaf]).get(`31971:${ROOT_OWNER}:${leafId}`);
+  const draft = workflowDraft(node, "patched", "https://example.com/proof", 20);
+  expect(draft.kind).toBe(1111);
+  expect(draft.created_at).toBe(20);
+  expect(draft.content).toBe("https://example.com/proof");
+  expect(draft.tags).toEqual([
+    ["A", node.coordinate, "wss://problems.example"],
+    ["K", "31971"],
+    ["P", ROOT_OWNER, "wss://problems.example"],
+    ["a", node.coordinate, "wss://problems.example"],
+    ["e", leaf.id, "wss://problems.example", ROOT_OWNER],
+    ["k", "31971"],
+    ["p", ROOT_OWNER, "wss://problems.example"],
+    ["patched"],
+  ]);
+});

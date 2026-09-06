@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nostrocket"
+  short_description: "Claim and patch NIP-1971 problems"
+  default_prompt: "Use $nostrocket to find actionable work and claim a problem."
