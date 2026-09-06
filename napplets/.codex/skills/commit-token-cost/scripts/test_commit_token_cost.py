@@ -3,7 +3,9 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
+from subprocess import CompletedProcess
 
 
 SCRIPT = Path(__file__).with_name("commit_token_cost.py")
@@ -174,6 +176,53 @@ class CommitTokenCostTests(unittest.TestCase):
             sibling.mkdir()
             self.assertTrue(MODULE.inside_repo(repo / "nested", repo.resolve()))
             self.assertFalse(MODULE.inside_repo(sibling, repo.resolve()))
+
+    def test_bitcoin_quote_reads_coinbase_spot_response(self):
+        def runner(command, **options):
+            self.assertEqual(command[0], "curl")
+            self.assertIn(MODULE.BTC_SPOT_URL, command)
+            self.assertEqual(options["text"], True)
+            return CompletedProcess(
+                command,
+                0,
+                stdout='{"data":{"amount":"50000.00","currency":"USD"}}',
+                stderr="",
+            )
+
+        now = datetime(2026, 9, 6, tzinfo=timezone.utc)
+        quote = MODULE.bitcoin_quote(runner=runner, now=now)
+        self.assertEqual(quote["btc_usd"], "50000.00")
+        self.assertEqual(quote["source_url"], MODULE.BTC_SPOT_URL)
+        self.assertEqual(quote["source_documentation_url"], MODULE.BTC_SPOT_DOCS_URL)
+        self.assertEqual(quote["retrieved_at"], "2026-09-06T00:00:00+00:00")
+
+    def test_bitcoin_override_and_sats_conversion(self):
+        quote = MODULE.bitcoin_quote(
+            "50000", now=datetime(2026, 9, 6, tzinfo=timezone.utc)
+        )
+        report = {
+            "commits": [
+                {"usage": {"api_equivalent_cost_usd": "1.25"}},
+                {"usage": {"api_equivalent_cost_usd": "0.00025"}},
+            ]
+        }
+        result = MODULE.add_bitcoin_estimates(report, quote)
+        self.assertEqual(result["commits"][0]["usage"]["api_equivalent_cost_sats"], 2500)
+        self.assertEqual(result["commits"][1]["usage"]["api_equivalent_cost_sats"], 1)
+        self.assertEqual(result["bitcoin_quote"]["source_url"], None)
+
+    def test_bitcoin_rate_rejects_non_positive_or_non_finite_values(self):
+        for value in ("0", "-1", "NaN", "Infinity", "nope"):
+            with self.subTest(value=value):
+                with self.assertRaises(MODULE.ReportError):
+                    MODULE.bitcoin_quote(value)
+
+    def test_bitcoin_quote_reports_curl_failure(self):
+        def runner(command, **options):
+            return CompletedProcess(command, 60, stdout="", stderr="curl: operation timed out\n")
+
+        with self.assertRaisesRegex(MODULE.ReportError, "operation timed out"):
+            MODULE.bitcoin_quote(runner=runner)
 
 
 if __name__ == "__main__":

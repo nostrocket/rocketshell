@@ -6,8 +6,8 @@ import json
 import subprocess
 import sys
 from collections import defaultdict
-from datetime import datetime
-from decimal import Decimal
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 
@@ -18,6 +18,9 @@ USAGE_KEYS = (
     "reasoning_output_tokens",
     "total_tokens",
 )
+BTC_SPOT_URL = "https://api.coinbase.com/v2/prices/BTC-USD/spot"
+BTC_SPOT_DOCS_URL = "https://docs.cdp.coinbase.com/coinbase-business/track-apis/prices"
+SATS_PER_BTC = Decimal("100000000")
 
 
 class ReportError(Exception):
@@ -41,6 +44,11 @@ def parse_args(argv=None):
         "--prices",
         default=str(Path(__file__).resolve().parent.parent / "references" / "prices.json"),
         help="Pinned pricing JSON path.",
+    )
+    parser.add_argument(
+        "--btc-usd",
+        default=None,
+        help="BTC/USD spot-price override; skips live Coinbase lookup.",
     )
     parser.add_argument("--format", choices=("human", "json"), default="human")
     return parser.parse_args(argv)
@@ -229,6 +237,79 @@ def load_prices(path):
     return data
 
 
+def positive_decimal(value, label):
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError) as error:
+        raise ReportError(f"{label} is not a valid decimal: {value}") from error
+    if not amount.is_finite() or amount <= 0:
+        raise ReportError(f"{label} must be a positive finite decimal")
+    return amount
+
+
+def bitcoin_quote(override=None, runner=subprocess.run, now=None):
+    if override is not None:
+        return {
+            "btc_usd": str(positive_decimal(override, "--btc-usd")),
+            "source_url": None,
+            "source_documentation_url": BTC_SPOT_DOCS_URL,
+            "source": "command-line --btc-usd override",
+            "retrieved_at": (now or datetime.now(timezone.utc)).isoformat(),
+        }
+
+    try:
+        response = runner(
+            [
+                "curl",
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--max-time",
+                "10",
+                "--header",
+                "Accept: application/json",
+                BTC_SPOT_URL,
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as error:
+        raise ReportError(f"Coinbase BTC/USD spot lookup failed: {error}") from error
+    if response.returncode:
+        detail = response.stderr.strip().splitlines()
+        raise ReportError(
+            f"Coinbase BTC/USD spot lookup failed: "
+            f"{detail[-1] if detail else f'curl exited {response.returncode}'}"
+        )
+    try:
+        payload = json.loads(response.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise ReportError(f"Coinbase BTC/USD spot response is invalid JSON: {error}") from error
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict) or data.get("currency") != "USD":
+        raise ReportError("Coinbase BTC/USD spot response has unexpected currency or shape")
+    return {
+        "btc_usd": str(positive_decimal(data.get("amount"), "Coinbase BTC/USD spot price")),
+        "source_url": BTC_SPOT_URL,
+        "source_documentation_url": BTC_SPOT_DOCS_URL,
+        "source": "Coinbase BTC-USD spot price",
+        "retrieved_at": (now or datetime.now(timezone.utc)).isoformat(),
+    }
+
+
+def add_bitcoin_estimates(report, quote):
+    btc_usd = positive_decimal(quote["btc_usd"], "BTC/USD spot price")
+    for commit in report["commits"]:
+        cost_usd = Decimal(commit["usage"]["api_equivalent_cost_usd"])
+        sats = cost_usd * SATS_PER_BTC / btc_usd
+        commit["usage"]["api_equivalent_cost_sats"] = int(
+            sats.to_integral_value(rounding=ROUND_HALF_UP)
+        )
+    report["bitcoin_quote"] = quote
+    return report
+
+
 def summarize_events(events, prices):
     totals = defaultdict(int)
     for key in (
@@ -343,18 +424,24 @@ def build_report(repo, commits, events, prices):
 
 def print_human(report):
     pricing = report["pricing"]
+    quote = report["bitcoin_quote"]
     print(report["label"])
     print(f"Repository: {report['repository']}")
     print(f"Attribution: {report['attribution']}")
     print(f"Pricing: {pricing['tier']}, retrieved {pricing['retrieved_on']}")
     print(f"Source: {pricing['source_url']}")
+    print(
+        f"BTC/USD: ${Decimal(quote['btc_usd']):,.2f}, "
+        f"{quote['source']}, retrieved {quote['retrieved_at']}"
+    )
     print()
-    print("Commit       Cost USD       Input      Cached     Output  Subject")
+    print("Commit       Cost USD   Cost sats       Input      Cached     Output  Subject")
     for commit in report["commits"]:
         usage = commit["usage"]
         cost = Decimal(usage["api_equivalent_cost_usd"])
         print(
             f"{commit['hash'][:10]:10}  ${cost:>11.6f}  "
+            f"{usage['api_equivalent_cost_sats']:>10,}  "
             f"{usage.get('input_tokens', 0):>10,}  {usage.get('cached_input_tokens', 0):>10,}  "
             f"{usage.get('output_tokens', 0):>9,}  {commit['subject']}"
         )
@@ -370,6 +457,7 @@ def main(argv=None):
         prices = load_prices(Path(args.prices).expanduser().resolve())
         events = list(iter_usage_events(Path(args.codex_home).expanduser().resolve(), repo))
         report = build_report(repo, commits, events, prices)
+        report = add_bitcoin_estimates(report, bitcoin_quote(args.btc_usd))
         if args.format == "json":
             print(json.dumps(report, indent=2, ensure_ascii=False))
         else:

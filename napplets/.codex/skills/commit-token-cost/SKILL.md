@@ -1,11 +1,11 @@
 ---
 name: commit-token-cost
-description: Estimate Codex token usage and API-equivalent USD cost for individual Git commits from local Codex JSONL logs and pinned official OpenAI Standard API prices. Use when asked for token counts, dollar value, AI cost, or model usage per commit, revision, or commit range.
+description: Estimate Codex token usage and API-equivalent cost in USD and bitcoin sats for individual Git commits from local Codex JSONL logs, pinned official OpenAI Standard API prices, and a BTC/USD spot quote. Use when asked for token counts, dollar or sat value, AI cost, or model usage per commit, revision, or commit range.
 ---
 
 # Commit Token Cost
 
-Use bundled deterministic script. Report values as **API-equivalent estimates**, never actual Codex billing.
+Use bundled deterministic script. Report USD and sat values as **API-equivalent estimates**, never actual Codex billing.
 
 ## Workflow
 
@@ -16,10 +16,12 @@ Use bundled deterministic script. Report values as **API-equivalent estimates**,
 python3 /absolute/path/to/commit-token-cost/scripts/commit_token_cost.py --repo . --commit HEAD
 python3 /absolute/path/to/commit-token-cost/scripts/commit_token_cost.py --repo . --range 'main~5..main'
 python3 /absolute/path/to/commit-token-cost/scripts/commit_token_cost.py --repo . --range 'main~5..main' --format json
+python3 /absolute/path/to/commit-token-cost/scripts/commit_token_cost.py --repo . --commit HEAD --btc-usd 50000
 ```
 
-3. Report attribution method, uncovered limitations, pricing source, and retrieval date with result.
-4. Stop on unknown model pricing. Never substitute a similar model or invent a rate. Add exact official rate to snapshot only after verifying source.
+3. Use live unauthenticated [Coinbase `BTC-USD` spot price](https://docs.cdp.coinbase.com/coinbase-business/track-apis/prices) by default. Use `--btc-usd` only for reproducible or offline runs.
+4. Report attribution method, uncovered limitations, API pricing source/date, and BTC quote source/time with result.
+5. Stop on unknown model pricing or unavailable BTC quote. Never substitute a similar model, stale quote, or invented rate.
 
 ## Attribution and accounting
 
@@ -30,6 +32,7 @@ python3 /absolute/path/to/commit-token-cost/scripts/commit_token_cost.py --repo 
 - Price `output_tokens` once. `reasoning_output_tokens` is a reported subset of output, not extra billable output.
 - Select official long-context rates per call when input exceeds snapshot threshold and that model has a published long-context rate.
 - Deduplicate copied JSONL events by timestamp and cumulative usage fingerprint.
+- Convert each USD estimate with `USD / BTC-USD * 100,000,000`, rounded to nearest sat.
 
 This time-window method cannot prove causal authorship. Concurrent work in same worktree, uncommitted work, rebases, amended timestamps, clocks, sessions recorded outside worktree, and work performed before first-parent boundary can under- or over-attribute usage. Cache-write tokens remain in uncached input because requested accounting is `input - cached`; estimate does not claim invoice parity.
 
