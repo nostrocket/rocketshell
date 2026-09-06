@@ -6,5 +6,4 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 .DS_Store
-.agents/
 skills-lock.json
