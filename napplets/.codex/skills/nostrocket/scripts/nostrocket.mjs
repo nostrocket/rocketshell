@@ -26,7 +26,7 @@ const sessionDirectory = path.join(homedir(), ".config", "nostrocket");
 const sessionPath = path.join(sessionDirectory, "notary-nip46.nbunksec");
 
 const usage = () => {
-  console.error("usage: nostrocket.sh actionable | inspect <problem-id> | children <problem-id> | claim <problem-id> | patch <problem-id> --proof <https-url> | notary-status | install-notary | connect");
+  console.error("usage: nostrocket.sh actionable | claims [--format human|json] | inspect <problem-id> | children <problem-id> | claim <problem-id> | patch <problem-id> --proof <https-url> | notary-status | install-notary | connect");
   process.exitCode = 2;
 };
 
@@ -74,7 +74,12 @@ const notaryStatus = async () => {
 const requireNotarySession = async () => {
   if (await hasNotarySession()) return;
   const installed = await findInstalledNotary();
-  throw new Error(notaryStatusMessage({ installed: Boolean(installed), connected: false }));
+  requireNotarySessionStatus({ installed: Boolean(installed), connected: false });
+};
+
+export const requireNotarySessionStatus = ({ installed, connected }) => {
+  if (connected) return;
+  throw new Error(notaryStatusMessage({ installed, connected }));
 };
 
 export const assertNotaryPlatform = (platform = process.platform, architecture = process.arch) => {
@@ -190,16 +195,16 @@ export const selectCurrentNodes = (inputEvents) => {
     const previous = new Set(revisions.flatMap((event) => tagsNamed(event, "e").filter((tag) => tag[3] === "previous").map((tag) => tag[1])));
     const eligibleHeads = revisions.filter((event) => !previous.has(event.id) && eligibleRevision(event));
     if (eligibleHeads.length === 0) {
-      nodes.set(coordinate, { coordinate, resolved: false, reason: "no eligible current head", event: null, candidates: revisions.filter((event) => !previous.has(event.id)) });
+      nodes.set(coordinate, { coordinate, resolved: false, reason: "no eligible current head", event: null, candidates: revisions.filter((event) => !previous.has(event.id)), revisions });
       continue;
     }
     const newest = Math.max(...eligibleHeads.map((event) => event.created_at));
     const latest = eligibleHeads.filter((event) => event.created_at === newest);
     if (latest.length !== 1) {
-      nodes.set(coordinate, { coordinate, resolved: false, reason: "equal-timestamp current-head fork", event: null, candidates: latest });
+      nodes.set(coordinate, { coordinate, resolved: false, reason: "equal-timestamp current-head fork", event: null, candidates: latest, revisions });
       continue;
     }
-    nodes.set(coordinate, { coordinate, resolved: true, reason: null, event: latest[0], candidates: latest });
+    nodes.set(coordinate, { coordinate, resolved: true, reason: null, event: latest[0], candidates: latest, revisions });
   }
   return nodes;
 };
@@ -237,17 +242,111 @@ const assertNoReachableCycle = (nodes, reachable) => {
   for (const coordinate of reachable) visit(coordinate);
 };
 
+const parseClaimAction = (event) => {
+  if (event?.kind !== 1111 || !/^[0-9a-f]{64}$/.test(event.id ?? "") || !/^[0-9a-f]{64}$/.test(event.pubkey ?? "")) return null;
+  const scopes = tagsNamed(event, "A");
+  const coordinates = tagsNamed(event, "a");
+  const revisions = tagsNamed(event, "e");
+  const markers = tagsNamed(event, "claim");
+  const coordinate = scopes[0]?.[1];
+  if (scopes.length !== 1 || coordinates.length !== 1 || revisions.length !== 1 || markers.length !== 1 || markers[0].length !== 1) return null;
+  if (!/^31971:[0-9a-f]{64}:[0-9a-f]{64}$/.test(coordinate ?? "") || coordinates[0][1] !== coordinate) return null;
+  if (!/^[0-9a-f]{64}$/.test(revisions[0][1] ?? "") || !Number.isInteger(event.created_at)) return null;
+  return { event, coordinate, revisionId: revisions[0][1] };
+};
+
+const revisionMap = (node) => new Map((node?.revisions ?? []).map((event) => [event.id, event]));
+
+const selectedRevisionPathContains = (node, targetId, requiredStatus) => {
+  if (!node?.resolved) return false;
+  const revisions = revisionMap(node);
+  const pending = [node.event.id];
+  const visited = new Set();
+  while (pending.length) {
+    const revisionId = pending.pop();
+    if (visited.has(revisionId)) continue;
+    visited.add(revisionId);
+    const revision = revisions.get(revisionId);
+    if (!revision || (requiredStatus !== undefined && (tagValue(revision, "status") ?? "open") !== requiredStatus)) continue;
+    if (revisionId === targetId) return true;
+    pending.push(...tagsNamed(revision, "e").filter((tag) => tag[3] === "previous").map((tag) => tag[1]));
+  }
+  return false;
+};
+
+const claimTarget = (claim, node) => {
+  const target = revisionMap(node).get(claim.revisionId);
+  if (!target || claim.event.created_at < target.created_at) return null;
+  return target;
+};
+
+const activeClaimCandidates = (actions, node, now) => {
+  if (!node?.resolved) return [];
+  const status = tagValue(node.event, "status") ?? "open";
+  if (status === "rfm") return [];
+  return uniqueEvents(actions).map(parseClaimAction).filter((claim) => {
+    if (!claim || claim.coordinate !== node.coordinate || claim.event.created_at + CLAIM_SECONDS <= now) return false;
+    const target = claimTarget(claim, node);
+    return target && (tagValue(target, "status") ?? "open") === status
+      && selectedRevisionPathContains(node, claim.revisionId, status);
+  });
+};
+
 export const effectiveClaim = (actions, node, now = Math.floor(Date.now() / 1000)) => {
-  if (!node?.resolved) return null;
-  const valid = uniqueEvents(actions).filter((event) =>
-    event.kind === 1111
-    && tagsNamed(event, "claim").some((tag) => tag.length === 1)
-    && tagsNamed(event, "a").some((tag) => tag[1] === node.coordinate)
-    && tagsNamed(event, "e").some((tag) => tag[1] === node.event.id)
-    && event.created_at >= node.event.created_at
-    && event.created_at + CLAIM_SECONDS > now);
+  const valid = activeClaimCandidates(actions, node, now).map((claim) => claim.event);
   valid.sort((left, right) => left.created_at - right.created_at || left.id.localeCompare(right.id));
   return valid[0] ?? null;
+};
+
+const acknowledgedBySelectedRevision = (node, claim) => {
+  if (!node?.resolved || (tagValue(node.event, "status") ?? "open") !== "claimed") return false;
+  const acknowledgements = tagsNamed(node.event, "claim");
+  return acknowledgements.length === 1
+    && acknowledgements[0].length === 3
+    && acknowledgements[0][1] === claim.event.id
+    && acknowledgements[0][2] === claim.event.pubkey;
+};
+
+export const claimsForPubkey = (nodes, actions, pubkey, now = Math.floor(Date.now() / 1000)) => {
+  const reachable = reachableCoordinates(nodes);
+  const parsed = uniqueEvents(actions).map(parseClaimAction).filter(Boolean);
+  const winners = new Map();
+  for (const node of nodes.values()) {
+    const candidates = activeClaimCandidates(actions, node, now)
+      .sort((left, right) => left.event.created_at - right.event.created_at || left.event.id.localeCompare(right.event.id));
+    if (candidates[0]) winners.set(node.coordinate, candidates[0]);
+  }
+
+  return parsed.filter((claim) => claim.event.pubkey === pubkey && nodes.has(claim.coordinate)).map((claim) => {
+    const node = nodes.get(claim.coordinate);
+    const target = claimTarget(claim, node);
+    let state;
+    if (!node.resolved) state = "unresolved";
+    else if (!reachable.has(node.coordinate)) state = "unreachable";
+    else if (claim.event.created_at + CLAIM_SECONDS <= now) state = "expired";
+    else if (acknowledgedBySelectedRevision(node, claim)) state = "acknowledged";
+    else if (!target || !selectedRevisionPathContains(node, claim.revisionId)) state = "superseded";
+    else {
+      const status = tagValue(node.event, "status") ?? "open";
+      const targetStatus = tagValue(target, "status") ?? "open";
+      if (!selectedRevisionPathContains(node, claim.revisionId, status) || targetStatus !== status) state = "superseded";
+      else if (status === "rfm") state = "pending";
+      else state = winners.get(node.coordinate)?.event.id === claim.event.id ? "active" : "outcompeted";
+    }
+    return {
+      eventId: claim.event.id,
+      problemId: claim.coordinate.split(":")[2],
+      coordinate: claim.coordinate,
+      title: node.resolved ? (tagValue(node.event, "title") ?? "Untitled problem") : null,
+      state,
+      problemStatus: node.resolved ? (tagValue(node.event, "status") ?? "open") : null,
+      selectedRevisionId: node.event?.id ?? null,
+      claimedAt: claim.event.created_at,
+      expiresAt: claim.event.created_at + CLAIM_SECONDS,
+      winnerEventId: winners.get(node.coordinate)?.event.id ?? null,
+      winnerClaimant: winners.get(node.coordinate)?.event.pubkey ?? null,
+    };
+  }).sort((left, right) => right.claimedAt - left.claimedAt || left.eventId.localeCompare(right.eventId));
 };
 
 const childNodes = (nodes, coordinate) => [...nodes.values()].filter((node) =>
@@ -367,6 +466,27 @@ const listActionable = async () => {
   available.forEach(printNode);
 };
 
+const printClaim = (claim) => {
+  console.log(`- [${claim.state}] ${claim.title ?? "Unresolved problem"}`);
+  console.log(`  ${compactId(claim.problemId)}`);
+  console.log(`  Claim: ${claim.eventId}`);
+  console.log(`  Expires: ${new Date(claim.expiresAt * 1000).toISOString()}`);
+  if (claim.state === "outcompeted" && claim.winnerEventId) console.log(`  Winning claim: ${claim.winnerEventId}`);
+};
+
+const listMyClaims = async (format) => {
+  const pubkey = await pairedNotaryPublicKey();
+  const { nodes } = await loadDag();
+  const actions = await loadActions([...nodes.keys()]);
+  const claims = claimsForPubkey(nodes, actions, pubkey);
+  if (format === "json") {
+    console.log(JSON.stringify({ pubkey, claims }, null, 2));
+    return;
+  }
+  console.log(`Found ${claims.length} claims for paired Notary signer:`);
+  claims.forEach(printClaim);
+};
+
 const importWorkspacePackage = async (name) => {
   const requireFromWorkspace = createRequire(path.join(workspaceDirectory, "packages", "nostr-engine", "package.json"));
   const resolved = requireFromWorkspace.resolve(name);
@@ -384,6 +504,30 @@ const signerRuntime = async () => {
   const pool = new RelayPool();
   return { eventStore, pool, verifyEvent, NostrConnectSigner };
 };
+
+const readNotarySession = async () => {
+  await requireNotarySession();
+  await access(sessionPath, fsConstants.R_OK);
+  const metadata = await lstat(sessionPath);
+  if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error("NIP-46 session path is not a regular file");
+  if ((metadata.mode & 0o077) !== 0) throw new Error("NIP-46 session file permissions must be 0600");
+  return (await readFile(sessionPath, "utf8")).trim();
+};
+
+export const pairedSignerPublicKey = async (encoded, { pool, NostrConnectSigner }) => {
+  let signer;
+  try {
+    signer = await NostrConnectSigner.fromNbunksec(encoded, { pool });
+    const pubkey = await signer.getPublicKey();
+    if (!/^[0-9a-f]{64}$/.test(pubkey)) throw new Error("paired Notary returned an invalid public key");
+    return pubkey;
+  } finally {
+    if (signer) await signer.close();
+    pool.close();
+  }
+};
+
+const pairedNotaryPublicKey = async () => pairedSignerPublicKey(await readNotarySession(), await signerRuntime());
 
 const readStdin = async () => {
   let value = "";
@@ -438,11 +582,7 @@ const relaySelections = async (pubkey) => {
 
 const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const signAndPublish = async (draft) => {
-  await access(sessionPath, fsConstants.R_OK);
-  const sessionMetadata = await lstat(sessionPath);
-  if (!sessionMetadata.isFile() || sessionMetadata.isSymbolicLink()) throw new Error("NIP-46 session path is not a regular file");
-  if ((sessionMetadata.mode & 0o077) !== 0) throw new Error("NIP-46 session file permissions must be 0600");
-  const encoded = (await readFile(sessionPath, "utf8")).trim();
+  const encoded = await readNotarySession();
   const { eventStore, pool, verifyEvent, NostrConnectSigner } = await signerRuntime();
   let signer;
   try {
@@ -521,6 +661,8 @@ const mutate = async (action, id, proof) => {
 export const main = async (argv) => {
   const [command, ...args] = argv;
   if (command === "actionable" && args.length === 0) return listActionable();
+  if (command === "claims" && args.length === 0) return listMyClaims("human");
+  if (command === "claims" && args.length === 2 && args[0] === "--format" && new Set(["human", "json"]).has(args[1])) return listMyClaims(args[1]);
   if (command === "inspect" && args.length === 1) return inspect(args[0]);
   if (command === "children" && args.length === 1) return listChildren(args[0]);
   if (command === "claim" && args.length === 1) return mutate("claim", args[0]);

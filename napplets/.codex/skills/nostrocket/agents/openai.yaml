@@ -1,4 +1,4 @@
 interface:
   display_name: "Nostrocket"
-  short_description: "Find, claim, patch, and set up Notary"
-  default_prompt: "Use $nostrocket to find actionable work and set up Notary for claims."
+  short_description: "Find work and track your contributor claims"
+  default_prompt: "Use $nostrocket to list my claims and explain their current state."

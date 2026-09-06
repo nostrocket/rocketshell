@@ -46,6 +46,42 @@ Patch proof is event content. No private tag or local wire convention is added.
 - Publish to the actor's NIP-65 write relays and tagged recipients' read relays,
   falling back to bootstrap relays when no current relay list can be resolved.
 
+## Claim listing semantics
+
+`claims` derives reporting state; it does not add protocol fields or publish
+events. It obtains “my” pubkey only by restoring the paired NIP-46 session and
+calling `getPublicKey()`. Missing sessions use the same safe Notary status and
+setup guidance as write preflight. The command never calls `signEvent()` or a
+workflow publication path.
+
+Load every known claim for every discovered problem coordinate before filtering
+to the paired pubkey. For each problem, select the current kind `31971` revision
+first. Keep equal-newest-timestamp forks unresolved; never choose by event ID.
+Evaluate only exact kind `1111` claim shapes with one matching `A` coordinate,
+one matching `a` coordinate, one exact `e` revision, and one bare `claim` marker.
+
+A claim remains attached through later selected revisions while their status
+does not change. A selected revision on another branch, or a later status
+change, supersedes an unacknowledged claim. A later selected `claimed` revision
+acknowledges only the exact event and claimant recorded by
+`["claim", "<claim-event-id>", "<claimant>"]`.
+
+All claims expire at `created_at + 86400`. Among currently effective,
+unexpired claims, earliest `created_at` wins; equal times use ascending claim
+event ID. An `rfm` claim stays a request until a selected `claimed` revision
+acknowledges it.
+
+Output labels are local explanations, not NIP-1971 statuses:
+
+- `active`: unexpired winning best-effort claim.
+- `acknowledged`: selected `claimed` revision records this claim and claimant.
+- `pending`: unexpired `rfm` request awaiting acknowledgement.
+- `outcompeted`: another claim wins by time and event-ID ordering.
+- `expired`: 24-hour window ended.
+- `superseded`: selected revision branch or status no longer preserves claim.
+- `unresolved`: no unique selected current revision exists.
+- `unreachable`: problem is not reachable from configured Nostrocket root.
+
 ## Notary installation
 
 Installation is separate from signing and must be explicitly requested. Current

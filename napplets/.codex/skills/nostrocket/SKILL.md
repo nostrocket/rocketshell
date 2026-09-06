@@ -1,6 +1,6 @@
 ---
 name: nostrocket
-description: Find actionable NIP-1971 problems and inspect, list, claim, or patch problems in the Nostrocket DAG, including installing and pairing the Notary NIP-46 signer. Use for available work, open leaves, problem children, problem status, Notary setup, contributor claims, and solution proof publication. Contributor-only; excludes maintainer revisions and merit requests.
+description: Find actionable NIP-1971 problems; inspect problems; list claims made by the paired Notary identity; claim or patch problems; and install or pair the Notary NIP-46 signer. Use for available work, open leaves, problem children, problem status, my claims, claim status, Notary setup, contributor claims, and solution proof publication. Contributor-only; excludes maintainer revisions and merit requests.
 ---
 
 # Nostrocket
@@ -9,6 +9,8 @@ Use the bundled command from any directory. Resolve paths relative to this file.
 
 ```bash
 bash scripts/nostrocket.sh actionable
+bash scripts/nostrocket.sh claims
+bash scripts/nostrocket.sh claims --format json
 bash scripts/nostrocket.sh inspect '<problem-id>'
 bash scripts/nostrocket.sh children '<problem-id>'
 bash scripts/nostrocket.sh claim '<problem-id>'
@@ -68,6 +70,9 @@ arguments. Run `connect` in an interactive PTY.
 - `actionable`: list reachable descendants whose selected current revision is
   `open`, has no selected current children, has no effective unexpired claim,
   and has no unresolved equal-timestamp current-head fork.
+- `claims`: use only paired Notary `getPublicKey()` to list that identity's
+  claims and their current derived state. This is read-only: never sign or
+  publish. Load all competing claims before filtering by signer pubkey.
 - `inspect`: show selected revision, status, description, children, and effective
   claim. Report an unresolved current head instead of guessing.
 - `children`: list selected direct children only, not recursive descendants.
@@ -91,7 +96,9 @@ Do not publish maintainer kind-31971 revisions. Do not request merits.
 ## Protocol
 
 Read [protocol.md](references/protocol.md) before changing event construction,
-head selection, claim validity, or signer permissions.
+head selection, claim validity, or signer permissions. Read its claim-state
+section when interpreting `claims` output or explaining why a claim has a
+particular state.
 
 ## Requirements
 
