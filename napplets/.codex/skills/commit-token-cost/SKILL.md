@@ -30,7 +30,8 @@ python3 /absolute/path/to/commit-token-cost/scripts/commit_token_cost.py --repo 
 - Price `output_tokens` once. `reasoning_output_tokens` is a reported subset of output, not extra billable output.
 - Select official long-context rates per call when input exceeds snapshot threshold and that model has a published long-context rate.
 - Deduplicate copied JSONL events by timestamp and cumulative usage fingerprint.
-- Convert each USD estimate with `USD / BTC-USD * 100,000,000`, rounded to nearest sat.
+- Calculate each USD price component with full precision, round it upward to two decimal places, then sum reported components for totals.
+- Convert each rounded reported USD estimate with `USD / BTC-USD * 100,000,000`, rounded to nearest sat.
 
 For routine calculations, use the script's attribution label without loading more
 context. Read [attribution details](references/attribution.md) only when asked to

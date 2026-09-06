@@ -103,8 +103,8 @@ class CommitTokenCostTests(unittest.TestCase):
         }
         result = MODULE.summarize_events([event], prices)
         self.assertEqual(result["uncached_input_tokens"], 60)
-        self.assertEqual(result["api_equivalent_cost_usd"], "3.4")
-        self.assertEqual(result["models"][0]["output_cost_usd"], "2")
+        self.assertEqual(result["api_equivalent_cost_usd"], "3.40")
+        self.assertEqual(result["models"][0]["output_cost_usd"], "2.00")
 
     def test_multiple_models_aggregate(self):
         prices = {
@@ -126,7 +126,7 @@ class CommitTokenCostTests(unittest.TestCase):
             [{**base, "model": "gpt-5"}, {**base, "model": "gpt-4.1"}], prices
         )
         self.assertEqual(len(result["models"]), 2)
-        self.assertEqual(result["api_equivalent_cost_usd"], "0.9")
+        self.assertEqual(result["api_equivalent_cost_usd"], "0.90")
 
     def test_unknown_model_fails(self):
         event = {
@@ -166,6 +166,34 @@ class CommitTokenCostTests(unittest.TestCase):
         result = MODULE.summarize_events([event], prices)
         self.assertEqual(result["models"][0]["context"], "long")
         self.assertEqual(result["api_equivalent_cost_usd"], "0.72")
+
+    def test_usd_costs_round_up_to_two_decimal_places(self):
+        self.assertEqual(MODULE.format_usd("0"), "0.00")
+        self.assertEqual(MODULE.format_usd("0.000001"), "0.01")
+        self.assertEqual(MODULE.format_usd("1.230000"), "1.23")
+        self.assertEqual(MODULE.format_usd("1.230001"), "1.24")
+
+    def test_reported_total_sums_ceiling_rounded_components(self):
+        prices = {
+            "unit_tokens": 1000,
+            "long_context_threshold_input_tokens": 272000,
+            "rates": {"gpt-5": {"input": "1", "cached_input": "1", "output": "1"}},
+        }
+        event = {
+            "model": "gpt-5",
+            "input_tokens": 2,
+            "cached_input_tokens": 1,
+            "output_tokens": 1,
+            "reasoning_output_tokens": 0,
+            "counter_reset": False,
+        }
+        result = MODULE.summarize_events([event], prices)
+        model = result["models"][0]
+        self.assertEqual(model["uncached_input_cost_usd"], "0.01")
+        self.assertEqual(model["cached_input_cost_usd"], "0.01")
+        self.assertEqual(model["output_cost_usd"], "0.01")
+        self.assertEqual(model["api_equivalent_cost_usd"], "0.03")
+        self.assertEqual(result["api_equivalent_cost_usd"], "0.03")
 
     def test_inside_repo_rejects_sibling_prefix(self):
         with tempfile.TemporaryDirectory() as temp:

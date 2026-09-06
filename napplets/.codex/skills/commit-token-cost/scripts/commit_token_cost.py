@@ -7,7 +7,7 @@ import subprocess
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 from pathlib import Path
 
 
@@ -21,6 +21,7 @@ USAGE_KEYS = (
 BTC_SPOT_URL = "https://api.coinbase.com/v2/prices/BTC-USD/spot"
 BTC_SPOT_DOCS_URL = "https://docs.cdp.coinbase.com/coinbase-business/track-apis/prices"
 SATS_PER_BTC = Decimal("100000000")
+USD_CENT = Decimal("0.01")
 
 
 class ReportError(Exception):
@@ -310,6 +311,11 @@ def add_bitcoin_estimates(report, quote):
     return report
 
 
+def format_usd(amount):
+    """Round a USD cost upward to cents and preserve two decimal places."""
+    return format(Decimal(amount).quantize(USD_CENT, rounding=ROUND_CEILING), ".2f")
+
+
 def summarize_events(events, prices):
     totals = defaultdict(int)
     for key in (
@@ -361,8 +367,15 @@ def summarize_events(events, prices):
             else Decimal("0")
         )
         output_cost = Decimal(counts["output_tokens"]) * Decimal(output_rate) / unit
-        cost = uncached_cost + cached_cost + output_cost
-        total_cost += cost
+        reported_uncached_cost = format_usd(uncached_cost)
+        reported_cached_cost = format_usd(cached_cost)
+        reported_output_cost = format_usd(output_cost)
+        reported_cost = format_usd(
+            Decimal(reported_uncached_cost)
+            + Decimal(reported_cached_cost)
+            + Decimal(reported_output_cost)
+        )
+        total_cost += Decimal(reported_cost)
         row = dict(counts)
         row.update(
             {
@@ -373,10 +386,10 @@ def summarize_events(events, prices):
                     "cached_input": cached_rate,
                     "output": output_rate,
                 },
-                "uncached_input_cost_usd": str(uncached_cost),
-                "cached_input_cost_usd": str(cached_cost),
-                "output_cost_usd": str(output_cost),
-                "api_equivalent_cost_usd": str(cost),
+                "uncached_input_cost_usd": reported_uncached_cost,
+                "cached_input_cost_usd": reported_cached_cost,
+                "output_cost_usd": reported_output_cost,
+                "api_equivalent_cost_usd": reported_cost,
             }
         )
         model_rows.append(row)
@@ -391,7 +404,7 @@ def summarize_events(events, prices):
         ):
             totals[key] += counts[key]
     result = dict(totals)
-    result["api_equivalent_cost_usd"] = str(total_cost)
+    result["api_equivalent_cost_usd"] = format_usd(total_cost)
     result["models"] = model_rows
     return result
 
@@ -440,7 +453,7 @@ def print_human(report):
         usage = commit["usage"]
         cost = Decimal(usage["api_equivalent_cost_usd"])
         print(
-            f"{commit['hash'][:10]:10}  ${cost:>11.6f}  "
+            f"{commit['hash'][:10]:10}  ${cost:>11.2f}  "
             f"{usage['api_equivalent_cost_sats']:>10,}  "
             f"{usage.get('input_tokens', 0):>10,}  {usage.get('cached_input_tokens', 0):>10,}  "
             f"{usage.get('output_tokens', 0):>9,}  {commit['subject']}"
