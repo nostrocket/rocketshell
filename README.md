@@ -14,6 +14,23 @@ pnpm build
 Production files are written to `apps/shell/dist`. The default build uses `/`
 as its base path; `pnpm --filter @platform/shell build:github` uses `/shell/`.
 
+## Local agent skills
+
+Repository-owned agent workflows live beside the scope where agents discover
+them. Napplet authoring skills are mirrored at repository and `napplets/`
+scope; both copies must remain aligned.
+
+| Skill | Purpose | Local definitions |
+| --- | --- | --- |
+| `applesauce` | Build reactive Nostr clients with Applesauce and RxJS. | [repository agent skill](.agents/skills/applesauce/SKILL.md) |
+| `build-napplet` | Implement a designed sandboxed napplet. | [repository scope](.codex/skills/build-napplet/SKILL.md), [napplets scope](napplets/.codex/skills/build-napplet/SKILL.md) |
+| `commit-token-cost` | Estimate Codex token cost per commit in USD and sats. | [napplets scope](napplets/.codex/skills/commit-token-cost/SKILL.md) |
+| `design-napplet` | Turn a napplet idea into a build specification. | [repository scope](.codex/skills/design-napplet/SKILL.md), [napplets scope](napplets/.codex/skills/design-napplet/SKILL.md) |
+| `make-napplet` | Orchestrate napplet design, build, and verification. | [repository scope](.codex/skills/make-napplet/SKILL.md), [napplets scope](napplets/.codex/skills/make-napplet/SKILL.md) |
+| `nostrocket` | Discover, inspect, claim, and prove contributor DAG work. | [napplets scope](napplets/.codex/skills/nostrocket/SKILL.md) |
+| `port-nostr-app` | Audit and convert a Nostr web app into a napplet. | [repository scope](.codex/skills/port-nostr-app/SKILL.md), [napplets scope](napplets/.codex/skills/port-nostr-app/SKILL.md) |
+| `test-napplet` | Run browser protocol conformance before publishing. | [repository scope](.codex/skills/test-napplet/SKILL.md), [napplets scope](napplets/.codex/skills/test-napplet/SKILL.md) |
+
 ## Implemented NAP specifications
 
 - **NAP-SHELL** (`shell`): readiness handshake, per-Napplet capability

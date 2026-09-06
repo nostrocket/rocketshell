@@ -22,6 +22,25 @@
 
 - Do not use environment variables.
 
+## Local skills
+
+- Keep every repository-owned skill documented in the
+  [README skill index](README.md#local-agent-skills).
+- `applesauce`: [.agents definition](.agents/skills/applesauce/SKILL.md).
+- `build-napplet`: [.codex definition](.codex/skills/build-napplet/SKILL.md),
+  [napplets definition](napplets/.codex/skills/build-napplet/SKILL.md).
+- `commit-token-cost`:
+  [napplets definition](napplets/.codex/skills/commit-token-cost/SKILL.md).
+- `design-napplet`: [.codex definition](.codex/skills/design-napplet/SKILL.md),
+  [napplets definition](napplets/.codex/skills/design-napplet/SKILL.md).
+- `make-napplet`: [.codex definition](.codex/skills/make-napplet/SKILL.md),
+  [napplets definition](napplets/.codex/skills/make-napplet/SKILL.md).
+- `nostrocket`: [napplets definition](napplets/.codex/skills/nostrocket/SKILL.md).
+- `port-nostr-app`: [.codex definition](.codex/skills/port-nostr-app/SKILL.md),
+  [napplets definition](napplets/.codex/skills/port-nostr-app/SKILL.md).
+- `test-napplet`: [.codex definition](.codex/skills/test-napplet/SKILL.md),
+  [napplets definition](napplets/.codex/skills/test-napplet/SKILL.md).
+
 ## Crush Bugs opt-in only
 
 - Do not activate, invoke, inspect, or follow the installed `crush-bugs` skill
