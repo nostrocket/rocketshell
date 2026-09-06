@@ -23,10 +23,8 @@ python3 /absolute/path/to/commit-token-cost/scripts/commit_token_cost.py --repo 
 4. Report attribution method, uncovered limitations, API pricing source/date, and BTC quote source/time with result.
 5. Stop on unknown model pricing or unavailable BTC quote. Never substitute a similar model, stale quote, or invented rate.
 
-## Attribution and accounting
+## Accounting
 
-- Filter sessions by a recorded `cwd` inside selected Git worktree.
-- Assign an event to commit when timestamp is after first parent's committer timestamp and at or before commit's committer timestamp.
 - Derive per-call usage from cumulative counter deltas. Treat decreasing counters as reset. Ignore unchanged cumulative samples. Fall back to `last_token_usage` only when cumulative usage is absent.
 - Calculate uncached input as `input_tokens - cached_input_tokens`; price cached input separately.
 - Price `output_tokens` once. `reasoning_output_tokens` is a reported subset of output, not extra billable output.
@@ -34,7 +32,9 @@ python3 /absolute/path/to/commit-token-cost/scripts/commit_token_cost.py --repo 
 - Deduplicate copied JSONL events by timestamp and cumulative usage fingerprint.
 - Convert each USD estimate with `USD / BTC-USD * 100,000,000`, rounded to nearest sat.
 
-This time-window method cannot prove causal authorship. Concurrent work in same worktree, uncommitted work, rebases, amended timestamps, clocks, sessions recorded outside worktree, and work performed before first-parent boundary can under- or over-attribute usage. Cache-write tokens remain in uncached input because requested accounting is `input - cached`; estimate does not claim invoice parity.
+For routine calculations, use the script's attribution label without loading more
+context. Read [attribution details](references/attribution.md) only when asked to
+explain, assess, or interpret commit attribution or its accuracy.
 
 ## Privacy
 
