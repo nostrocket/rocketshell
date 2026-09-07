@@ -19,6 +19,35 @@ const NIP_65_RELAYS_PER_CATEGORY = 4;
 export const limitNip65RelayList = (relays: readonly string[]): string[] =>
   [...new Set(relays)].slice(0, NIP_65_RELAYS_PER_CATEGORY);
 
+interface RelayList {
+  readonly read: string[];
+  readonly write: string[];
+}
+
+interface RelayListFallback {
+  readonly activePubkey: string;
+  readonly ephemeral: boolean;
+  readonly readRelays: readonly string[];
+  readonly writeRelays: readonly string[];
+}
+
+/** A disposable identity uses shell policy until it has declared NIP-65 mailboxes of its own. */
+export function resolveRelayList(
+  pubkey: string,
+  discovered: RelayList,
+  fallback: RelayListFallback
+): RelayList {
+  const read = limitNip65RelayList(discovered.read);
+  const write = limitNip65RelayList(discovered.write);
+  if (read.length > 0 || write.length > 0 || !fallback.ephemeral || pubkey !== fallback.activePubkey) {
+    return { read, write };
+  }
+  return {
+    read: limitNip65RelayList(fallback.readRelays),
+    write: limitNip65RelayList(fallback.writeRelays)
+  };
+}
+
 export interface CoreServiceOptions { readonly discoveryRelays?: readonly string[]; readonly directReadRelays: readonly string[]; readonly directWriteRelays: readonly string[]; readonly relayConfiguration?: PlatformRelayConfiguration }
 export interface CoreServiceRegistration { readonly identity: IdentityProviders; close(): void }
 
@@ -80,13 +109,19 @@ export function registerCoreServices(shell: Pick<ShellBridge, "runtime" | "publi
     // Freshness, deduplication and the network fetch all live in the event store and its loader
     // now; this used to be a hand-rolled TTL cache with its own discovery query.
     loadRelayLists: async (pubkeys) => {
+      const fallback = {
+        activePubkey: accounts.publicKey,
+        ephemeral: accounts.ephemeral,
+        readRelays,
+        writeRelays
+      };
       const entries = await Promise.all([...new Set(pubkeys)].map(async (pubkey): Promise<[string, { read: string[]; write: string[] }]> => {
         const user = castUser(pubkey, eventStore);
         const [read, write] = await Promise.all([
           user.inboxes$.$first<string[]>(RELAY_LIST_TIMEOUT_MS, []),
           user.outboxes$.$first<string[]>(RELAY_LIST_TIMEOUT_MS, [])
         ]);
-        return [pubkey, { read: limitNip65RelayList(read), write: limitNip65RelayList(write) }];
+        return [pubkey, resolveRelayList(pubkey, { read, write }, fallback)];
       }));
       return new Map(entries.filter(([, list]) => list.read.length > 0 || list.write.length > 0));
     },

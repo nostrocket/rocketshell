@@ -4,12 +4,87 @@ import { freshAdapters } from "./fresh.js";
 import { finalizeEvent, generateSecretKey } from "nostr-tools/pure";
 import { getSeenRelays } from "applesauce-core/helpers";
 import type { StreamingOutboxRouter } from "@kehto/services";
+import { EMPTY } from "rxjs";
 
 describe("core service lifecycle", () => {
   it("bounds oversized NIP-65 relay categories", async () => {
     const { engine, adapters } = await freshAdapters();
     const relays = Array.from({ length: 12 }, (_, index) => `wss://relay-${index}.example`);
     expect(adapters.limitNip65RelayList([...relays, relays[0]!])).toEqual(relays.slice(0, 4));
+    engine.shutdownNostrServices();
+  });
+  it("uses shell relay tiers for an ephemeral identity without NIP-65 mailboxes", async () => {
+    const { engine, adapters } = await freshAdapters();
+    const pubkey = await engine.accounts.connectEphemeral();
+    const resolved = adapters.resolveRelayList(pubkey, { read: [], write: [] }, {
+      activePubkey: pubkey,
+      ephemeral: true,
+      readRelays: ["wss://read.example/"],
+      writeRelays: ["wss://write.example/"]
+    });
+    expect(resolved).toEqual({
+      read: ["wss://read.example/"],
+      write: ["wss://write.example/"]
+    });
+    engine.shutdownNostrServices();
+  });
+  it("publishes an ephemeral identity through the configured write tier", async () => {
+    const handlers = new Map<string, ServiceHandler>();
+    const runtime = {
+      registerService: (name: string, handler: ServiceHandler) => handlers.set(name, handler),
+      sessionRegistry: { getAllEntries: () => [] }
+    } as unknown as Runtime;
+    const { engine, adapters } = await freshAdapters();
+    vi.spyOn(engine.relayPool, "request").mockReturnValue(EMPTY);
+    const publish = vi.spyOn(engine.relayPool, "publish").mockImplementation(async (relays) => {
+      if (!Array.isArray(relays)) throw new Error("expected fixed relay list");
+      return relays.map((relay: string) => ({ from: relay, ok: true, message: "saved" }));
+    });
+    await engine.accounts.connectEphemeral();
+    const registration = adapters.registerCoreServices({ runtime, publishIdentityChanged: vi.fn() }, {
+      directReadRelays: ["wss://read.example/"],
+      directWriteRelays: ["wss://write.example/"]
+    });
+    const send = vi.fn();
+    handlers.get("outbox")!.handleMessage("window-1", {
+      type: "outbox.publish",
+      id: "publish-1",
+      event: { kind: 1, created_at: 1, content: "ephemeral", tags: [] }
+    } as never, send);
+
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce(), { timeout: 6_000 });
+
+    expect(publish).toHaveBeenCalledOnce();
+    expect(publish.mock.calls[0]?.[0]).toEqual(["wss://write.example/"]);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      type: "outbox.publish.result",
+      id: "publish-1",
+      ok: true,
+      relays: { "wss://write.example/": true }
+    }));
+    registration.close(); engine.shutdownNostrServices();
+  }, 7_000);
+  it("does not replace declared or third-party NIP-65 relay lists", async () => {
+    const { engine, adapters } = await freshAdapters();
+    const fallback = {
+      activePubkey: "11".repeat(32),
+      ephemeral: true,
+      readRelays: ["wss://fallback-read.example/"],
+      writeRelays: ["wss://fallback-write.example/"]
+    };
+    expect(adapters.resolveRelayList(fallback.activePubkey, {
+      read: ["wss://declared-read.example/"],
+      write: ["wss://declared-write.example/"]
+    }, fallback)).toEqual({
+      read: ["wss://declared-read.example/"],
+      write: ["wss://declared-write.example/"]
+    });
+    expect(adapters.resolveRelayList("22".repeat(32), { read: [], write: [] }, fallback))
+      .toEqual({ read: [], write: [] });
+    expect(adapters.resolveRelayList(fallback.activePubkey, { read: [], write: [] }, {
+      ...fallback,
+      ephemeral: false
+    })).toEqual({ read: [], write: [] });
     engine.shutdownNostrServices();
   });
   it("notifies account-sensitive services for every live window on account change", async () => {
