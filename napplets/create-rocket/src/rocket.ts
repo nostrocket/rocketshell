@@ -51,8 +51,18 @@ export function buildIgnitionTemplate(draft: RocketDraft, createdAt: number): Ev
   return { kind: 31108, created_at: createdAt, content: "", tags };
 }
 
-export async function publishIgnition(publish: (template: EventTemplate, options: { toOutbox: true }) => Promise<{ ok: boolean; event?: { id: string }; error?: string }>, template: EventTemplate): Promise<string> {
-  const result = await publish(template, { toOutbox: true });
+export interface PublishOptions {
+  toOutbox?: boolean;
+  relays?: string[];
+  toInboxes?: string[];
+}
+
+export async function publishIgnition(
+  publish: (template: EventTemplate, options?: PublishOptions) => Promise<{ ok: boolean; event?: { id: string }; error?: string }>,
+  template: EventTemplate,
+  options: PublishOptions = { toOutbox: true }
+): Promise<string> {
+  const result = await publish(template, options);
   if (!result.ok || !result.event?.id) throw new Error(result.error ?? "Shell did not return a published event.");
   return result.event.id;
 }

@@ -68,4 +68,24 @@ describe("rocket reference choices", () => {
     expect(choice.title).toBe("مستودع 🚀");
     expect([...choice.summary].length).toBe(180);
   });
+
+  it("includes independent and local root problems without requiring hardcoded nostrocket root", () => {
+    const localOwner = "e".repeat(64);
+    const localId = "f".repeat(64);
+    const localCoord = `31971:${localOwner}:${localId}`;
+    const localProblem = result({
+      id: "7".repeat(64),
+      pubkey: localOwner,
+      tags: [
+        ["d", localId],
+        ["title", "Local problem"],
+        ["a", localCoord, "wss://local.example", "origin"],
+        ["A", localCoord]
+      ]
+    });
+    const choices = problemChoices([localProblem]);
+    expect(choices).toEqual([
+      { coordinate: localCoord, relay: "wss://local.example", title: "Local problem", summary: "Problem body", createdAt: 1, depth: 0 }
+    ]);
+  });
 });

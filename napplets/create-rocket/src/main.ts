@@ -40,6 +40,7 @@ const repositoryOptions = document.querySelector<HTMLElement>("#repository-optio
 const referenceStatus = document.querySelector<HTMLOutputElement>("#reference-status")!;
 const retryReferences = document.querySelector<HTMLButtonElement>("#retry-references")!;
 const observedIdentifiers = new Set<string>();
+const observedRelays = new Set<string>();
 let identifierStreamActive = true;
 let selectedProblem: RocketReferenceChoice | undefined;
 let selectedRepository: RocketReferenceChoice | undefined;
@@ -79,7 +80,15 @@ async function publish(): Promise<void> {
   if (hasObservedRocketIdentifier(pendingIdentifier, observedIdentifiers)) { showEditor(); setStatus("Identifier is now used by an observed kind 31108 event. Choose another identifier.", "error"); syncIdentifierValidation(); return; }
   publishButton.disabled = true; publishButton.textContent = "Publishing…";
   try {
-    const id = await publishIgnition(outbox.publish as Parameters<typeof publishIgnition>[0], pending);
+    const targetRelays = Array.from(new Set([
+      ...observedRelays,
+      ...(selectedProblem?.relay ? [selectedProblem.relay] : []),
+      ...(selectedRepository?.relay ? [selectedRepository.relay] : []),
+    ]));
+    const id = await publishIgnition(outbox.publish as Parameters<typeof publishIgnition>[0], pending, targetRelays.length ? {
+      relays: targetRelays,
+      toOutbox: false,
+    } : undefined);
     review.innerHTML = `<span class="eyebrow">Ignition published</span><h2>Rocket launched.</h2><p>Signed event returned by shell:</p><code class="event-id">${id}</code>`;
     if (!reducedMotion) gsap.fromTo("#review > *", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .35, stagger: .06, ease: "power3.out" });
   } catch (error) {
@@ -176,7 +185,7 @@ async function loadReferences(pubkey?: string): Promise<void> {
     }
 
     const [problemResponse, repositoryResponse, relayPlan] = await Promise.all([
-      outbox.query({ kinds: [31971], "#A": [ROOT_PROBLEM_COORDINATE] }, { timeoutMs: 8000 }),
+      outbox.query({ kinds: [31971], limit: 500 }, { limit: 500, timeoutMs: 8000 }),
       outbox.query({ kinds: [30617], authors: [currentPubkey] }, { authors: [currentPubkey], timeoutMs: 8000 }),
       outbox.resolveRelays({ pubkey: currentPubkey, direction: "read" }).catch((error: unknown) => {
         console.warn("Rocket reference relay fallback could not be resolved", { pubkey: currentPubkey, error });
@@ -184,12 +193,15 @@ async function loadReferences(pubkey?: string): Promise<void> {
       })
     ]);
     if (load !== referenceLoad) return;
+    if (relayPlan?.relays?.length) {
+      for (const relay of relayPlan.relays) observedRelays.add(relay);
+    }
     if (problemResponse.error && !problemResponse.events.length) throw new Error(problemResponse.error);
     if (repositoryResponse.error && !repositoryResponse.events.length) throw new Error(repositoryResponse.error);
 
     const problems = problemChoices(problemResponse.events as ChoiceResult[]);
     const repositories = repositoryChoices(repositoryResponse.events as ChoiceResult[], currentPubkey, relayPlan.relays);
-    problems.length ? renderChoices(problemOptions, "problem", problems) : renderState(problemOptions, "No problems found in the NOSTROCKET tree.", "empty");
+    problems.length ? renderChoices(problemOptions, "problem", problems) : renderState(problemOptions, "No problems found.", "empty");
     repositories.length ? renderChoices(repositoryOptions, "repository", repositories) : renderState(repositoryOptions, "have you logged any git repositories?", "empty");
     const incomplete = problemResponse.incomplete || problemResponse.error || repositoryResponse.incomplete || repositoryResponse.error;
     referenceStatus.dataset.state = incomplete ? "warning" : "idle";
@@ -200,10 +212,10 @@ async function loadReferences(pubkey?: string): Promise<void> {
     console.error("Rocket problem and repository choices could not be loaded", { error });
     renderState(problemOptions, "Problems could not be loaded.", "error");
     renderState(repositoryOptions, "Git repositories could not be loaded.", "error");
-    referenceStatus.dataset.state = "error";
-    referenceStatus.value = "Check your relay connection, then try again.";
+    referenceStatus.dataset.state = "warning";
+    referenceStatus.value = "Optional references could not be loaded. Check your relay connection to retry, or continue without them.";
     retryReferences.hidden = false;
-    previewButton.disabled = true;
+    previewButton.disabled = false;
   }
 }
 
