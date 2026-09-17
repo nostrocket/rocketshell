@@ -34,6 +34,12 @@ describe("merit request", () => {
     await expect(publishMeritRequest(publish, template)).resolves.toEqual({ id: "event-id", pubkey: "author" });
     expect(publish).toHaveBeenCalledWith(template, { toOutbox: true });
   });
+  it("publishes with explicit options when provided", async () => {
+    const publish = vi.fn().mockResolvedValue({ ok: true, event: { id: "event-id", pubkey: "author" } });
+    const template = buildMeritRequest(draft(), 1);
+    await expect(publishMeritRequest(publish, template, { relays: ["wss://relay.example"], toOutbox: false })).resolves.toEqual({ id: "event-id", pubkey: "author" });
+    expect(publish).toHaveBeenCalledWith(template, { relays: ["wss://relay.example"], toOutbox: false });
+  });
   it("surfaces publish rejection", async () => {
     await expect(publishMeritRequest(vi.fn().mockResolvedValue({ ok: false, error: "rejected" }), buildMeritRequest(draft(), 1))).rejects.toThrow("rejected");
   });

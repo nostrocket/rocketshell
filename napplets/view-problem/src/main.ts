@@ -406,7 +406,7 @@ async function publishAction(content: string, action?: "claim") {
   busy = true;
   render();
   try {
-    const result = await outbox.publish(buildWorkflowTemplate(problem, content, action), { toInboxes: [problem.owner] });
+    const result = await outbox.publish(buildWorkflowTemplate(problem, content, action), problem.relay ? { relays: [problem.relay], toOutbox: false } : { toInboxes: [problem.owner] });
     const acceptedRelays = Object.entries(result.relays ?? {}).filter(([, accepted]) => accepted).map(([relay]) => relay);
     if (!result.event || (!result.ok && acceptedRelays.length === 0)) {
       throw new Error(result.error ?? "Shell could not publish the event.");

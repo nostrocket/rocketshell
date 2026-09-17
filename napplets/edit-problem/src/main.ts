@@ -294,7 +294,7 @@ async function publishRevision(): Promise<void> {
     const hasChildren = hasProblemChildren(coordinate, [...childResponse.events, ...childRevisions]);
     status("Publishing complete revision…");
     const template = buildRevisionTemplate(publishingProblem, { title, description, status: selectedStatus, childStatus: childValue === "open" || childValue === "rfm" ? childValue : undefined }, Math.floor(Date.now() / 1000), hasChildren, parentChange);
-    const result = await outbox.publish(template, publishingProblem.relay ? { relays: [publishingProblem.relay] } : undefined);
+    const result = await outbox.publish(template, publishingProblem.relay ? { relays: [publishingProblem.relay], toOutbox: false } : undefined);
     relayOutcomes = result.relays;
     const publishedMessage = revisionPublishMessage(result);
     status(`${publishedMessage} Loading confirmed head…`);
