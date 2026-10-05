@@ -6,7 +6,9 @@ Problem references are selected from kind `31971` events reachable beneath same 
 
 NOSTROCKET ignition event is preserved verbatim in `src/fixtures/nostrocket-ignition.json` as test fixture and structural reference. It adds no protocol link to newly created rockets because governing specs define no cross-rocket reference tag.
 
-Required tags: `d`, `ruleset`, `ignition`, and `parent`. Optional ruleset tags use specified `mission`, `problem`, and `repo` forms.
+Required tags: `d`, `ruleset`, `ignition`, and `parent`. Optional ruleset tags use specified `mission`, `image`, `problem`, and `repo` forms.
+
+The optional `image` tag carries a rocket's logo. The URL is read through the shell `resource` domain and the sha256 digest of the exact bytes is published beside it (`["image", <url>, <sha256>]`), so a reader can verify the bytes it renders instead of trusting a mutable URL. When the domain is unavailable the URL is still published without a digest, and when the URL changes any previously computed digest is discarded rather than republished against different bytes.
 
 Sources: [NIP 31108](https://github.com/nostrocket/NIPS/blob/main/31108.md), [MSBR334000](https://github.com/nostrocket/NIPS/blob/main/MSBR334000.md), and [living NAP specifications](https://github.com/napplet/naps).
 

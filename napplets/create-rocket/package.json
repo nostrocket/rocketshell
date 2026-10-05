@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "napplet": { "dTag": "create-rocket", "title": "Create Rocket", "requires": ["outbox", "identity"] },
+  "napplet": { "dTag": "create-rocket", "title": "Create Rocket", "requires": ["outbox", "identity", "resource"] },
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build",

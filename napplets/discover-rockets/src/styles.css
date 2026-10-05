@@ -90,6 +90,19 @@ button:hover { border-color: var(--primary); color: var(--primary); }
   font-weight: 850;
 }
 .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.rocket-logo {
+  display: grid;
+  width: 44px; height: 44px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  border-radius: 12px;
+  background: var(--background);
+}
+.rocket-logo img { width: 100%; height: 100%; object-fit: contain; }
+/* The author avatar stays in the DOM as the fallback and is only hidden while a verified logo renders. */
+.rocket-logo + .avatar { display: none; }
 .rocket-id { display: grid; gap: 4px; min-width: 0; flex: 1 1 auto; }
 .rocket-name { margin: 0; font-size: clamp(1.25rem, 2.6vw, 1.9rem); letter-spacing: -.03em; line-height: 1.05; overflow-wrap: anywhere; }
 .rocket-children .rocket-name { font-size: clamp(1.02rem, 2vw, 1.35rem); }
@@ -127,6 +140,7 @@ button:hover { border-color: var(--primary); color: var(--primary); }
 
 @media (max-width: 380px) {
   .avatar { width: 36px; height: 36px; }
+  .rocket-logo { width: 36px; height: 36px; }
   .toggle, .toggle-spacer { width: 24px; height: 24px; min-height: 24px; }
   .rocket-meta { padding-left: 0; }
 }

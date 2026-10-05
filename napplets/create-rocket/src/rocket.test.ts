@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import fixture from "./fixtures/nostrocket-ignition.json";
-import { buildIgnitionTemplate, hasObservedRocketIdentifier, normalizeRocketIdentifier, publishIgnition, rocketIdentifier, validateDraft, type RocketDraft } from "./rocket";
+import { buildIgnitionTemplate, hasObservedRocketIdentifier, normalizeRocketIdentifier, publishIgnition, rocketIdentifier, sha256Hex, validateDraft, type RocketDraft } from "./rocket";
 
-const draft = (changes: Partial<RocketDraft> = {}): RocketDraft => ({ identifier: "MY_ROCKET", mission: "Coordinate independent builders.", problemCoordinate: "", problemRelay: "", repoCoordinate: "", repoRelay: "", ...changes });
+const draft = (changes: Partial<RocketDraft> = {}): RocketDraft => ({ identifier: "MY_ROCKET", mission: "Coordinate independent builders.", problemCoordinate: "", problemRelay: "", repoCoordinate: "", repoRelay: "", imageUrl: "", imageHash: "", ...changes });
+const SHA256_OF_ABC = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
 describe("rocket ignition", () => {
   it("keeps exact signed NOSTROCKET ignition as protocol reference", () => {
@@ -51,6 +52,35 @@ describe("rocket ignition", () => {
     const template = buildIgnitionTemplate(draft(), 1);
     await expect(publishIgnition(publish, template, { relays: ["wss://relay.example"], toOutbox: false })).resolves.toBe("event-id-2");
     expect(publish).toHaveBeenCalledWith(template, { relays: ["wss://relay.example"], toOutbox: false });
+  });
+  it("adds an image with the sha256 of its bytes when the shell can hash it", () => {
+    const imageUrl = "https://image.example/rocket.png";
+    expect(buildIgnitionTemplate(draft({ imageUrl, imageHash: SHA256_OF_ABC }), 1).tags).toEqual([
+      ["d", "MY_ROCKET"], ["ruleset", "334000"], ["ignition", "this"], ["parent", "this"],
+      ["mission", "Coordinate independent builders."], ["image", imageUrl, SHA256_OF_ABC]
+    ]);
+  });
+  it("publishes an image URL without a digest when hashing is unavailable", () => {
+    expect(buildIgnitionTemplate(draft({ imageUrl: "https://image.example/rocket.png" }), 1).tags.slice(-1)).toEqual([["image", "https://image.example/rocket.png"]]);
+  });
+  it("keeps the image tag ahead of problem and repo references", () => {
+    const pubkey = "a".repeat(64);
+    const tags = buildIgnitionTemplate(draft({ imageUrl: "https://image.example/rocket.png", imageHash: SHA256_OF_ABC, problemCoordinate: `31971:${pubkey}:${pubkey}`, repoCoordinate: `30617:${pubkey}:repo` }), 1).tags;
+    expect(tags.at(-3)?.[0]).toBe("image");
+    expect(tags.at(-2)?.[0]).toBe("problem");
+    expect(tags.at(-1)?.[0]).toBe("repo");
+  });
+  it("rejects insecure image URLs, malformed digests, and a digest without a URL", () => {
+    expect(validateDraft(draft({ imageUrl: "http://image.example/rocket.png", imageHash: "nope" }))).toEqual([
+      "Image URL must be an https:// URL.",
+      "Image hash must be the 64-character lowercase hex sha256 digest of the image bytes."
+    ]);
+    expect(validateDraft(draft({ imageHash: SHA256_OF_ABC }))).toEqual(["Image hash requires an image URL."]);
+    expect(validateDraft(draft({ imageUrl: "https://image.example/rocket.png", imageHash: SHA256_OF_ABC }))).toEqual([]);
+  });
+  it("hashes bytes in the lowercase hex form the image tag publishes", async () => {
+    expect(await sha256Hex(new TextEncoder().encode("abc"))).toBe(SHA256_OF_ABC);
+    expect(await sha256Hex(new TextEncoder().encode("abc").buffer as ArrayBuffer)).toBe(SHA256_OF_ABC);
   });
   it("surfaces structured publish failure", async () => {
     await expect(publishIgnition(vi.fn().mockResolvedValue({ ok: false, error: "rejected" }), buildIgnitionTemplate(draft(), 1))).rejects.toThrow("rejected");

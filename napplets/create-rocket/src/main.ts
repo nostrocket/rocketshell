@@ -1,10 +1,10 @@
-import { identity, outbox, themeGet, themeOnChanged } from "@napplet/sdk";
+import { identity, outbox, resource, themeGet, themeOnChanged } from "@napplet/sdk";
 import { gsap } from "gsap";
 import "./styles.css";
-import { buildIgnitionTemplate, hasObservedRocketIdentifier, normalizeRocketIdentifier, publishIgnition, rocketIdentifier, validateDraft, type EventTemplate, type RocketDraft } from "./rocket";
+import { buildIgnitionTemplate, hasObservedRocketIdentifier, normalizeRocketIdentifier, publishIgnition, rocketIdentifier, sha256Hex, validateDraft, type EventTemplate, type RocketDraft } from "./rocket";
 import { problemChoices, repositoryChoices, ROOT_PROBLEM_COORDINATE, type ChoiceResult, type RocketReferenceChoice } from "./selections";
 
-declare global { interface Window { napplet?: { theme?: { get?: unknown }; identity?: { getPublicKey?: unknown; onChanged?: unknown } } } }
+declare global { interface Window { napplet?: { theme?: { get?: unknown }; identity?: { getPublicKey?: unknown; onChanged?: unknown }; resource?: { bytes?: unknown } } } }
 const app = document.querySelector<HTMLElement>("#app") ?? (() => { throw new Error("Application root is missing."); })();
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let pending: EventTemplate | undefined;
@@ -14,6 +14,7 @@ app.innerHTML = `<article class="sheet">
   <section id="editor" aria-labelledby="details-title"><h2 id="details-title">Rocket details</h2>
     <label>Rocket Name <input id="identifier" autocomplete="off" placeholder="MY_ROCKET" aria-describedby="identifier-hint"></label><small id="identifier-hint" aria-live="polite">Checking observed rockets in background. You can continue.</small>
     <label>Mission <textarea id="mission" maxlength="139" rows="4" placeholder="Why should this rocket exist? (optional)"></textarea></label><small><output id="mission-count">0</output>/139 characters</small>
+    <label>Image / Logo URL <input id="image-url" type="url" autocomplete="off" placeholder="https://…" aria-describedby="image-hint"></label><small id="image-hint" aria-live="polite">Optional. An https:// URL, hashed through the shell so the published tag carries a verifiable sha256 digest.</small>
     <section class="references" aria-labelledby="references-title"><div class="section-heading"><div><h2 id="references-title">Problem and repository</h2><p>Choose a problem from the NOSTROCKET tree and a repository from your connected account.</p></div><button id="retry-references" class="text-button" type="button" hidden>Try again</button></div>
       <div class="reference-grid">
         <fieldset><legend>Problem</legend><div id="problem-options" class="choice-list" aria-live="polite" aria-busy="true"><p class="choice-state">Loading problem tree…</p></div></fieldset>
@@ -28,6 +29,8 @@ app.innerHTML = `<article class="sheet">
 
 const input = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)!;
 const mission = document.querySelector<HTMLTextAreaElement>("#mission")!;
+const imageInput = input("image-url");
+const imageHint = document.querySelector<HTMLElement>("#image-hint")!;
 const status = document.querySelector<HTMLOutputElement>("#status")!;
 const previewButton = document.querySelector<HTMLButtonElement>("#preview")!;
 const publishButton = document.querySelector<HTMLButtonElement>("#publish")!;
@@ -41,6 +44,8 @@ const referenceStatus = document.querySelector<HTMLOutputElement>("#reference-st
 const retryReferences = document.querySelector<HTMLButtonElement>("#retry-references")!;
 const observedIdentifiers = new Set<string>();
 const observedRelays = new Set<string>();
+const IMAGE_HINT = "Optional. An https:// URL, hashed through the shell so the published tag carries a verifiable sha256 digest.";
+let imageHash = "";
 let identifierStreamActive = true;
 let selectedProblem: RocketReferenceChoice | undefined;
 let selectedRepository: RocketReferenceChoice | undefined;
@@ -57,21 +62,63 @@ function syncIdentifierValidation(): boolean {
   return !duplicate;
 }
 
-function readDraft(): RocketDraft { return { identifier: input("identifier").value.trim(), mission: mission.value, problemCoordinate: selectedProblem?.coordinate ?? "", problemRelay: selectedProblem?.relay ?? "", repoCoordinate: selectedRepository?.coordinate ?? "", repoRelay: selectedRepository?.relay ?? "" }; }
+function readDraft(): RocketDraft { return { identifier: input("identifier").value.trim(), mission: mission.value, problemCoordinate: selectedProblem?.coordinate ?? "", problemRelay: selectedProblem?.relay ?? "", repoCoordinate: selectedRepository?.coordinate ?? "", repoRelay: selectedRepository?.relay ?? "", imageUrl: imageInput.value.trim(), imageHash }; }
+
+function setImageHint(message: string, state = "idle"): void { imageHint.textContent = message; imageHint.dataset.state = state; }
+
+/**
+ * MSBR334000 publishes the sha256 of the exact bytes beside the image URL, so a reader can verify
+ * what it renders. The shell's resource domain performs the fetch; when that domain is absent the
+ * URL is still publishable, just without a digest for readers to check it against.
+ */
+async function resolveImageHash(url: string): Promise<string | undefined> {
+  if (typeof window.napplet?.resource?.bytes !== "function") {
+    console.warn("Rocket image cannot be hashed; shell resource domain is missing", { url });
+    return undefined;
+  }
+  try {
+    const blob = await resource.bytes(url);
+    if (!blob.type.startsWith("image/")) {
+      console.warn("Rocket image rejected; resource is not an image", { url, mimeType: blob.type });
+      return undefined;
+    }
+    return await sha256Hex(await blob.arrayBuffer());
+  } catch (error) {
+    console.warn("Rocket image could not be fetched for hashing", { url, error });
+    return undefined;
+  }
+}
+
 function setStatus(message: string, state = "idle"): void { status.textContent = message; status.dataset.state = state; }
 function showEditor(): void { review.hidden = true; editor.hidden = false; pending = undefined; if (!reducedMotion) gsap.fromTo(editor, { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: .28, ease: "power2.out" }); }
 
-function showPreview(): void {
+async function showPreview(): Promise<void> {
   const draft = readDraft();
   identifierInput.value = draft.identifier;
   const errors = validateDraft(draft);
   if (!syncIdentifierValidation()) errors.push("Identifier must be unique among observed kind 31108 events.");
   if (errors.length) { setStatus(errors.join(" "), "error"); return; }
-  pending = buildIgnitionTemplate(draft, Math.floor(Date.now() / 1000));
-  document.querySelector<HTMLElement>("#event-preview")!.textContent = JSON.stringify(pending, null, 2);
-  editor.hidden = true; review.hidden = false;
-  if (!reducedMotion) gsap.fromTo(review, { opacity: 0, x: 10 }, { opacity: 1, x: 0, duration: .32, ease: "power2.out" });
-  publishButton.focus();
+  const wasDisabled = previewButton.disabled;
+  previewButton.disabled = true;
+  try {
+    imageHash = "";
+    if (draft.imageUrl) {
+      setStatus("Hashing the image through the shell…");
+      imageHash = await resolveImageHash(draft.imageUrl) ?? "";
+      if (imageHash) {
+        setImageHint(`sha256 ${imageHash.slice(0, 16)}… will be published with the image.`);
+        setStatus("Image digest computed. Review the exact tag before publishing.");
+      } else {
+        setImageHint("Image digest unavailable; the URL will be published without a sha256 digest.", "warning");
+        setStatus("Image digest unavailable. Publishing the URL without it.", "warning");
+      }
+    } else setImageHint(IMAGE_HINT);
+    pending = buildIgnitionTemplate(readDraft(), Math.floor(Date.now() / 1000));
+    document.querySelector<HTMLElement>("#event-preview")!.textContent = JSON.stringify(pending, null, 2);
+    editor.hidden = true; review.hidden = false;
+    if (!reducedMotion) gsap.fromTo(review, { opacity: 0, x: 10 }, { opacity: 1, x: 0, duration: .32, ease: "power2.out" });
+    publishButton.focus();
+  } finally { previewButton.disabled = wasDisabled; }
 }
 
 async function publish(): Promise<void> {
@@ -101,11 +148,12 @@ async function publish(): Promise<void> {
 }
 
 mission.addEventListener("input", () => { document.querySelector<HTMLOutputElement>("#mission-count")!.value = String([...mission.value].length); });
+imageInput.addEventListener("input", () => { imageHash = ""; setImageHint(IMAGE_HINT); });
 identifierInput.addEventListener("input", syncIdentifierValidation);
-previewButton.addEventListener("click", showPreview);
+previewButton.addEventListener("click", () => void showPreview());
 document.querySelector<HTMLButtonElement>("#back")!.addEventListener("click", showEditor);
 publishButton.addEventListener("click", () => void publish());
-editor.addEventListener("keydown", (event) => { if (event.key === "Enter" && event.target instanceof HTMLInputElement && event.target.type === "text") { event.preventDefault(); showPreview(); } });
+editor.addEventListener("keydown", (event) => { if (event.key === "Enter" && event.target instanceof HTMLInputElement && (event.target.type === "text" || event.target.type === "url")) { event.preventDefault(); void showPreview(); } });
 
 function renderState(container: HTMLElement, message: string, state = "idle"): void {
   container.replaceChildren();
