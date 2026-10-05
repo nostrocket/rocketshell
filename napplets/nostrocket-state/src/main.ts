@@ -1,7 +1,8 @@
-import { outbox, resource, themeGet, themeOnChanged, type RelayEventResult } from "@napplet/sdk";
+import { inc, outbox, resource, themeGet, themeOnChanged, type RelayEventResult } from "@napplet/sdk";
 import { gsap } from "gsap";
 import "./styles.css";
 import { meritSlices } from "./distribution";
+import { ROCKET_VIEW_CONVENTION, parseRocketViewPayload } from "./intent";
 import { firstMatchingState } from "./load";
 import { pendingMeritRequests, type PendingMeritRequest } from "./pending";
 import { avatarHue, avatarLabel, holderProfilesFromEvents, type HolderProfile } from "./profiles";
@@ -26,6 +27,12 @@ let rockets: RocketOption[] = [];
 let selectedCoordinate = NOSTROCKET_COORDINATE;
 let pendingRequests: PendingMeritRequest[] = [];
 let pendingError: string | undefined;
+/** Relays resolved by the last load, reused when an intent opens another rocket. */
+let currentRelays: string[] = [];
+/** A rocket requested through NAP-INTENT before discovery finished. */
+let requestedCoordinate: string | undefined;
+let initialLoadComplete = false;
+let intentSubscription: { close(): void } | undefined;
 
 function clearAvatars(): void {
   for (const url of avatarUrls.values()) URL.revokeObjectURL(url);
@@ -155,6 +162,9 @@ async function activateRocket(coordinate: string, relays: string[]): Promise<voi
     if (version !== loadVersion) return;
     validateStateEvent(event, coordinate);
     if (selected) selected.event = event;
+    // An intent can name a rocket discovery has not seen yet; add it so the
+    // picker keeps showing the rocket whose state is on screen.
+    else rockets = [{ coordinate, name: firstTag(event, "d") ?? "Rocket", author: event.pubkey, event }, ...rockets];
     renderState(event, relays);
     try {
       const response = await outbox.query([{ kinds: [1409], "#a": [coordinate], limit: 500 }], { limit: 500, timeoutMs: 8000 });
@@ -181,7 +191,6 @@ function showError(error: unknown): void {
 
 async function load(): Promise<void> {
   const version = ++loadVersion;
-  const preferredCoordinate = selectedCoordinate;
   clearAvatars();
   profiles = new Map();
   pendingRequests = [];
@@ -191,6 +200,7 @@ async function load(): Promise<void> {
     const discovery = await outbox.query([{ kinds: [30166], limit: 500 }], { limit: 500, timeoutMs: 4500 });
     const relays = selectNip66Relays(discovery.events.map((result: RelayEventResult) => result.event as NostrEvent)).map(({ url }) => url);
     if (!relays.length) console.warn("No suitable NIP-66 observations found; using shell author-outbox routing");
+    currentRelays = relays;
     try {
       const response = await outbox.query([{ kinds: [31108], limit: 500 }], { limit: 500, timeoutMs: 8000 });
       rockets = rocketsFromEvents(response.events.map(({ event }) => event as NostrEvent));
@@ -199,14 +209,42 @@ async function load(): Promise<void> {
       rockets = rocketsFromEvents([]);
     }
     if (version !== loadVersion) return;
-    selectedCoordinate = rockets.some(({ coordinate }) => coordinate === preferredCoordinate) ? preferredCoordinate : NOSTROCKET_COORDINATE;
+    // An intent that arrived while discovery was running wins over the default.
+    const preferred = requestedCoordinate ?? selectedCoordinate;
+    selectedCoordinate = rockets.some(({ coordinate }) => coordinate === preferred) ? preferred : NOSTROCKET_COORDINATE;
     await activateRocket(selectedCoordinate, relays);
   } catch (error) { if (version === loadVersion) showError(error); }
+  finally { initialLoadComplete = true; }
+}
+
+/**
+ * NAP-INTENT entry point: open the ledger for the rocket named by a
+ * `napplet:rocket/open` dispatch. Before discovery finishes the request is
+ * remembered and `load()` honors it; afterwards it activates directly.
+ */
+function handleRocketViewIntent(payload: unknown): void {
+  const parsed = parseRocketViewPayload(payload);
+  if (!parsed) {
+    console.warn("Rocket view intent ignored; payload did not name a valid rocket", { convention: ROCKET_VIEW_CONVENTION });
+    return;
+  }
+  requestedCoordinate = parsed.coordinate;
+  if (!initialLoadComplete) return;
+  void activateRocket(parsed.coordinate, currentRelays);
+}
+
+function startIntentListener(): void {
+  try {
+    intentSubscription = inc.on(ROCKET_VIEW_CONVENTION, (event) => handleRocketViewIntent(event.payload));
+  } catch (error) {
+    console.warn("Rocket view intent subscription failed; the picker still works", { convention: ROCKET_VIEW_CONVENTION, error });
+  }
 }
 
 if (typeof window.napplet?.theme?.get === "function") {
   themeGet().then(applyTheme).catch((error: unknown) => console.warn("Initial shell theme could not be read", { error }));
   themeOnChanged(applyTheme);
 }
-window.addEventListener("pagehide", clearAvatars, { once: true });
+window.addEventListener("pagehide", () => { clearAvatars(); intentSubscription?.close(); }, { once: true });
+startIntentListener();
 void load();
