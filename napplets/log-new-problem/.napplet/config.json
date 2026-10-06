@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "sourceDir": ".",
+  "relays": [
+    "wss://nos.lol",
+    "wss://relay.damus.io",
+    "wss://relay.primal.net",
+    "wss://nostr.mom"
+  ],
+  "blossomServers": [
+    "https://blssm.us",
+    "https://blossom.primal.net"
+  ],
+  "defaultTarget": "named",
+  "named": [
+    "log-new-problem"
+  ],
+  "discover": {
+    "enabled": true,
+    "roots": [
+      "."
+    ]
+  },
+  "signing": {
+    "mode": "interactive"
+  },
+  "conformance": {
+    "command": "napplet-conformance"
+  },
+  "paja": {
+    "command": "kehto"
+  },
+  "metadata": {
+    "name": "log-new-problem",
+    "title": "Log New Problem",
+    "description": "Create and publish NIP-1971 root and child problems.",
+    "archetypes": [
+      {
+        "slug": "composer",
+        "convention": "napplet:composer/problem-child"
+      }
+    ]
+  }
+}
