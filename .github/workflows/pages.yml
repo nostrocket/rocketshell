@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: corepack enable && corepack prepare pnpm@8.15.5 --activate
+      - run: corepack enable && corepack prepare pnpm@10.34.5 --activate
       - run: pnpm install --frozen-lockfile
       - uses: actions/configure-pages@v5
       - run: pnpm --filter '@platform/*-napplet' build
