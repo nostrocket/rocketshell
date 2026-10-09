@@ -7,7 +7,7 @@ export default defineConfig({
     nappletType: "discover-rockets",
     title: "Discover Rockets",
     description: "Discover and visualize every Sovereign Economic Community rocket and its multi-root hierarchy.",
-    requires: ["outbox"],
+    requires: ["outbox", "resource"],
     artifactMode: "single-file"
   })],
   build: { modulePreload: false },

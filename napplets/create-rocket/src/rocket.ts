@@ -1,9 +1,10 @@
-export interface RocketDraft { identifier: string; mission: string; problemCoordinate: string; problemRelay: string; repoCoordinate: string; repoRelay: string }
+export interface RocketDraft { identifier: string; mission: string; problemCoordinate: string; problemRelay: string; repoCoordinate: string; repoRelay: string; imageUrl: string; imageHash: string }
 export interface EventTemplate { kind: 31108; created_at: number; content: ""; tags: string[][] }
 export interface RocketIdentifierEvent { kind: number; tags: string[][] }
 
 const PROBLEM_COORDINATE = /^31971:[0-9a-f]{64}:[0-9a-f]{64}$/;
 const REPOSITORY_COORDINATE = /^30617:[0-9a-f]{64}:.+$/s;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 export function validateDraft(draft: RocketDraft): string[] {
   const errors: string[] = [];
@@ -11,6 +12,7 @@ export function validateDraft(draft: RocketDraft): string[] {
   if ([...draft.mission.trim()].length >= 140) errors.push("Mission must contain fewer than 140 characters.");
   validateOptional("problem", draft.problemCoordinate.trim(), draft.problemRelay.trim(), PROBLEM_COORDINATE, "31971:<64-char pubkey>:<64-char problem id>", errors);
   validateOptional("repository", draft.repoCoordinate.trim(), draft.repoRelay.trim(), REPOSITORY_COORDINATE, "30617:<64-char pubkey>:<d-tag>", errors);
+  validateImage(draft.imageUrl.trim(), draft.imageHash.trim(), errors);
   return errors;
 }
 
@@ -40,12 +42,31 @@ function isSecureRelayUrl(value: string): boolean {
   catch (error) { console.warn("Rocket relay URL validation failed", { value, error }); return false; }
 }
 
+/** MSBR334000 `image` tag: an https URL plus the lowercase hex sha256 of the bytes it serves. */
+function validateImage(imageUrl: string, imageHash: string, errors: string[]): void {
+  if (imageHash && !imageUrl) errors.push("Image hash requires an image URL.");
+  if (imageUrl && !isSecureImageUrl(imageUrl)) errors.push("Image URL must be an https:// URL.");
+  if (imageHash && !SHA256_HEX.test(imageHash)) errors.push("Image hash must be the 64-character lowercase hex sha256 digest of the image bytes.");
+}
+
+function isSecureImageUrl(value: string): boolean {
+  try { const url = new URL(value); return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password; }
+  catch (error) { console.warn("Rocket image URL validation failed", { value, error }); return false; }
+}
+
+/** Lowercase hex sha256 of the exact bytes, in the form the `image` tag publishes. */
+export async function sha256Hex(bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export function buildIgnitionTemplate(draft: RocketDraft, createdAt: number): EventTemplate {
-  const normalized = { ...draft, identifier: draft.identifier.trim(), mission: draft.mission.trim(), problemCoordinate: draft.problemCoordinate.trim(), problemRelay: draft.problemRelay.trim(), repoCoordinate: draft.repoCoordinate.trim(), repoRelay: draft.repoRelay.trim() };
+  const normalized = { ...draft, identifier: draft.identifier.trim(), mission: draft.mission.trim(), problemCoordinate: draft.problemCoordinate.trim(), problemRelay: draft.problemRelay.trim(), repoCoordinate: draft.repoCoordinate.trim(), repoRelay: draft.repoRelay.trim(), imageUrl: draft.imageUrl.trim(), imageHash: draft.imageHash.trim() };
   const errors = validateDraft(normalized);
   if (errors.length) throw new Error(errors.join(" "));
   const tags: string[][] = [["d", normalized.identifier], ["ruleset", "334000"], ["ignition", "this"], ["parent", "this"]];
   if (normalized.mission) tags.push(["mission", normalized.mission]);
+  if (normalized.imageUrl) tags.push(normalized.imageHash ? ["image", normalized.imageUrl, normalized.imageHash] : ["image", normalized.imageUrl]);
   if (normalized.problemCoordinate) tags.push(["problem", normalized.problemCoordinate, normalized.problemRelay]);
   if (normalized.repoCoordinate) tags.push(["repo", normalized.repoCoordinate, normalized.repoRelay]);
   return { kind: 31108, created_at: createdAt, content: "", tags };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterForest, forestFromRockets, forestStats, parseRocket, rocketsFromEvents, type NostrEvent } from "./rockets";
+import { filterForest, forestFromRockets, forestStats, imageMatchesDigest, parseRocket, rocketsFromEvents, sha256Hex, type NostrEvent } from "./rockets";
 
 const NOSTROCKET_IGNITION: NostrEvent = {
   kind: 31108,
@@ -21,6 +21,7 @@ const rocketEvent = (identifier: string, options: {
   mission?: string;
   problem?: [string, string?];
   repo?: [string, string?];
+  image?: [string, string?];
   createdAt?: number;
   id?: string;
 } = {}): NostrEvent => {
@@ -28,6 +29,7 @@ const rocketEvent = (identifier: string, options: {
   if (options.mission) tags.push(["mission", options.mission]);
   if (options.problem) tags.push(["problem", ...options.problem.filter((value): value is string => Boolean(value))]);
   if (options.repo) tags.push(["repo", ...options.repo.filter((value): value is string => Boolean(value))]);
+  if (options.image) tags.push(["image", ...options.image.filter((value): value is string => Boolean(value))]);
   return {
     kind: 31108,
     id: options.id ?? String(++syntheticIds).padStart(64, "0"),
@@ -82,6 +84,36 @@ describe("parseRocket", () => {
     expect(parseRocket({ ...NOSTROCKET_IGNITION, pubkey: "not-hex" })).toBeUndefined();
     expect(parseRocket({ ...NOSTROCKET_IGNITION, tags: [["mission", "No identifier"]] })).toBeUndefined();
     expect(parseRocket({ ...NOSTROCKET_IGNITION, tags: [["d", "   "]] })).toBeUndefined();
+  });
+});
+
+describe("rocket images", () => {
+  const hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+  it("parses an image with the sha256 digest the publisher committed to", () => {
+    expect(parseRocket(rocketEvent("LOGO", { image: ["https://image.example/rocket.png", hash] }))?.image).toEqual({ url: "https://image.example/rocket.png", hash });
+  });
+
+  it("parses an image published without a digest", () => {
+    expect(parseRocket(rocketEvent("LOGO", { image: ["https://image.example/rocket.png"] }))?.image).toEqual({ url: "https://image.example/rocket.png" });
+  });
+
+  it("leaves rockets without an image tag untouched", () => {
+    expect(parseRocket(rocketEvent("PLAIN"))?.image).toBeUndefined();
+    expect(parseRocket(rocketEvent("BLANK", { image: ["  ", hash] }))?.image).toBeUndefined();
+  });
+
+  it("drops images that cannot be trusted: non-https URLs and malformed digests", () => {
+    expect(parseRocket(rocketEvent("HTTP", { image: ["http://image.example/rocket.png"] }))?.image).toBeUndefined();
+    expect(parseRocket(rocketEvent("BAD_HASH", { image: ["https://image.example/rocket.png", "not-a-digest"] }))?.image).toBeUndefined();
+  });
+
+  it("checks fetched bytes against the published digest", async () => {
+    const bytes = new TextEncoder().encode("abc");
+    expect(await sha256Hex(bytes)).toBe(hash);
+    expect(await imageMatchesDigest({ url: "https://image.example/rocket.png", hash }, bytes)).toBe(true);
+    expect(await imageMatchesDigest({ url: "https://image.example/rocket.png", hash }, new TextEncoder().encode("abd"))).toBe(false);
+    expect(await imageMatchesDigest({ url: "https://image.example/rocket.png" }, new TextEncoder().encode("anything"))).toBe(true);
   });
 });
 

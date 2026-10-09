@@ -1,9 +1,9 @@
 import { outbox, resource, themeGet, themeOnChanged } from "@napplet/sdk";
 import { gsap } from "gsap";
 import "./styles.css";
-import { filterForest, forestFromRockets, forestStats, rocketsFromEvents, type NostrEvent, type RocketNode } from "./rockets";
+import { filterForest, forestFromRockets, forestStats, imageMatchesDigest, rocketsFromEvents, type NostrEvent, type Rocket, type RocketNode } from "./rockets";
 
-declare global { interface Window { napplet?: { theme?: { get?: unknown }; resource?: unknown } } }
+declare global { interface Window { napplet?: { theme?: { get?: unknown }; resource?: { bytes?: unknown } } } }
 
 const app = (() => {
   const element = document.querySelector<HTMLElement>("#app");
@@ -21,6 +21,8 @@ const eventsById = new Map<string, NostrEvent>();
 let forest: RocketNode[] = [];
 let profiles = new Map<string, AuthorProfile>();
 let avatarUrls = new Map<string, string>();
+/** Rocket `image` URL to the verified object URL rendered for it. */
+let rocketImageUrls = new Map<string, string>();
 let filterText = "";
 const collapsed = new Set<string>();
 let loadVersion = 0;
@@ -39,6 +41,11 @@ function knownAuthors(): string[] {
 function clearAvatars(): void {
   for (const url of avatarUrls.values()) URL.revokeObjectURL(url);
   avatarUrls = new Map();
+}
+
+function clearRocketImages(): void {
+  for (const url of rocketImageUrls.values()) URL.revokeObjectURL(url);
+  rocketImageUrls = new Map();
 }
 
 const nonEmptyString = (value: unknown): string | undefined =>
@@ -79,6 +86,20 @@ function avatarChip(identifier: string, author: string): string {
     <span class="avatar-fallback" aria-hidden="true">${escapeHtml(label)}</span>
     ${url ? `<img src="${escapeHtml(url)}" data-avatar-author="${author}" alt="">` : ""}
   </span>`;
+}
+
+/**
+ * Render the rocket's own image when its bytes have been fetched and verified, and let the author
+ * avatar next to it take over otherwise, so an unverifiable or unreachable image never stands in for
+ * the rocket. The avatar is always rendered and hidden by CSS while a logo is present, which makes
+ * the fallback automatic if the image is dropped later (for example when it fails to decode).
+ */
+function rocketLogo(rocket: Rocket): string | undefined {
+  if (!rocket.image) return undefined;
+  const url = rocketImageUrls.get(rocket.image.url);
+  if (!url) return undefined;
+  const title = rocket.image.hash ? "Rocket image · sha256 verified" : "Rocket image";
+  return `<span class="rocket-logo" title="${title}"><img src="${escapeHtml(url)}" data-rocket-image="${escapeHtml(rocket.image.url)}" alt=""></span>`;
 }
 
 function applyTheme(theme?: { colors: { background: string; text: string; primary: string } }): void {
@@ -161,7 +182,7 @@ function nodeHtml(node: RocketNode, ids: { n: number }): string {
       ${hasChildren
         ? `<button class="toggle" type="button" data-toggle="${escapeHtml(rocket.coordinate)}" aria-expanded="${expanded}" aria-controls="${branchId}"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1l5 4-5 4"/></svg><span class="sr-only">${expanded ? "Collapse" : "Expand"} ${escapeHtml(rocket.identifier)}</span></button>`
         : `<span class="toggle-spacer" aria-hidden="true"></span>`}
-      ${avatarChip(rocket.identifier, rocket.author)}
+      ${rocketLogo(rocket)}${avatarChip(rocket.identifier, rocket.author)}
       <div class="rocket-id"><${heading} class="rocket-name">${escapeHtml(rocket.identifier)}</${heading}>
         ${rocket.mission ? `<p class="rocket-mission">${escapeHtml(rocket.mission)}</p>` : ""}
       </div>
@@ -205,6 +226,10 @@ function bindInteractions(container: HTMLElement): void {
       expandChildren(target);
     }
   }));
+  container.querySelectorAll<HTMLImageElement>("[data-rocket-image]").forEach((image) => image.addEventListener("error", () => {
+    console.warn("Rocket image could not be decoded; falling back to the author avatar", { image: image.dataset.rocketImage });
+    image.closest(".rocket-logo")?.remove();
+  }, { once: true }));
   container.querySelectorAll<HTMLImageElement>("[data-avatar-author]").forEach((image) => image.addEventListener("error", () => {
     console.warn("Author avatar could not be decoded; using generated fallback", { author: image.dataset.avatarAuthor });
     image.remove();
@@ -248,6 +273,7 @@ function liveEventHandlers(version: number): { onEvent: (event: NostrEvent) => v
       rebuildForest();
       renderForest({ highlight: parseCoordinate(event) });
       void loadProfiles(version);
+      void loadRocketImages(version);
     },
     onClosed(reason) {
       setLive("off");
@@ -325,6 +351,51 @@ async function loadProfiles(version: number): Promise<void> {
   }
 }
 
+/**
+ * Read every discovered rocket image through the shell resource domain and render only images whose
+ * bytes match the sha256 the rocket published. A mismatch, a non-image resource, or a fetch failure
+ * leaves the card on its author avatar instead of showing bytes the rocket did not commit to.
+ */
+async function loadRocketImages(version: number): Promise<void> {
+  const wanted = new Map<string, string | undefined>();
+  const walk = (node: RocketNode): void => {
+    if (node.rocket.image && !rocketImageUrls.has(node.rocket.image.url)) wanted.set(node.rocket.image.url, node.rocket.image.hash);
+    for (const child of node.children) walk(child);
+  };
+  for (const root of forest) walk(root);
+  if (!wanted.size) return;
+  if (typeof window.napplet?.resource?.bytes !== "function") {
+    console.warn("Rocket images unavailable; shell resource domain is missing", { images: wanted.size });
+    return;
+  }
+  const loaded = await Promise.all([...wanted].map(async ([url, hash]) => {
+    try {
+      const blob = await resource.bytes(url);
+      if (!blob.type.startsWith("image/")) {
+        console.warn("Rocket image rejected; resource is not an image", { url, mimeType: blob.type });
+        return undefined;
+      }
+      const bytes = await blob.arrayBuffer();
+      if (!await imageMatchesDigest(hash ? { url, hash } : { url }, bytes)) {
+        console.warn("Rocket image rejected; bytes do not match the published sha256 digest", { url, hash });
+        return undefined;
+      }
+      return [url, URL.createObjectURL(blob)] as const;
+    } catch (error) {
+      console.warn("Rocket image fetch failed; falling back to the author avatar", { url, error });
+      return undefined;
+    }
+  }));
+  if (version !== loadVersion) {
+    loaded.forEach((entry) => { if (entry) URL.revokeObjectURL(entry[1]); });
+    return;
+  }
+  const added = loaded.filter((entry): entry is readonly [string, string] => Boolean(entry));
+  if (!added.length) return;
+  for (const [url, objectUrl] of added) rocketImageUrls.set(url, objectUrl);
+  renderForest({ animate: false });
+}
+
 function collectAuthors(roots: readonly RocketNode[]): string[] {
   const authors: string[] = [];
   const walk = (node: RocketNode): void => {
@@ -346,6 +417,7 @@ async function load(): Promise<void> {
   liveRetries = 0;
   if (retryTimer) { clearTimeout(retryTimer); retryTimer = undefined; }
   clearAvatars();
+  clearRocketImages();
   profiles = new Map();
   eventsById.clear();
   app.innerHTML = `<section class="boot-state" aria-live="polite"><div class="pulse"></div><p>Querying kind 31108 ignitions through the author outbox…</p></section>`;
@@ -369,6 +441,7 @@ async function load(): Promise<void> {
     if (status && (seedResponse.incomplete || outboxResponse.incomplete)) status.textContent = "Discovery results are partial; some relays did not respond.";
     subscribeLive(version);
     await loadProfiles(version);
+    await loadRocketImages(version);
   } catch (error) {
     if (version === loadVersion) showError(error);
   }
@@ -378,5 +451,5 @@ if (typeof window.napplet?.theme?.get === "function") {
   themeGet().then(applyTheme).catch((error: unknown) => console.warn("Initial shell theme could not be read", { error }));
   themeOnChanged(applyTheme);
 }
-window.addEventListener("pagehide", clearAvatars, { once: true });
+window.addEventListener("pagehide", () => { clearAvatars(); clearRocketImages(); }, { once: true });
 void load();

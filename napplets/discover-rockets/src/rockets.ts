@@ -10,6 +10,9 @@ export type NostrEvent = {
 
 export type RocketReference = { coordinate: string; relay?: string };
 
+/** MSBR334000 `image` tag: the rocket's logo, with the sha256 of its bytes when the publisher included one. */
+export type RocketImage = { url: string; hash?: string };
+
 export type Rocket = {
   /** Addressable coordinate `31108:<author pubkey>:<identifier>`. */
   coordinate: string;
@@ -21,6 +24,7 @@ export type Rocket = {
   mission?: string;
   problem?: RocketReference;
   repo?: RocketReference;
+  image?: RocketImage;
   createdAt: number;
   event: NostrEvent;
 };
@@ -35,6 +39,7 @@ export type RocketNode = {
 };
 
 const HEX_64 = /^[0-9a-f]{64}$/;
+const HTTPS_IMAGE_URL = /^https:\/\/[^\s]+$/;
 
 function tagValue(event: NostrEvent, name: string): string | undefined {
   const value = event.tags.find(([tag]) => tag === name)?.[1]?.trim();
@@ -47,6 +52,27 @@ function tagReference(event: NostrEvent, name: string): RocketReference | undefi
   if (!coordinate) return undefined;
   const relay = tag?.[2]?.trim();
   return relay ? { coordinate, relay } : { coordinate };
+}
+
+/**
+ * Parse an MSBR334000 `image` tag. Only https URLs are accepted, and a digest that is present must
+ * be lowercase hex: an image that cannot be checked against what the rocket published is dropped
+ * rather than rendered as if it were the rocket's own.
+ */
+function tagImage(event: NostrEvent): RocketImage | undefined {
+  const tag = event.tags.find(([name]) => name === "image");
+  const url = tag?.[1]?.trim();
+  if (!url) return undefined;
+  if (!HTTPS_IMAGE_URL.test(url)) {
+    console.warn("Ignoring rocket image with a non-https URL", { url });
+    return undefined;
+  }
+  const hash = tag?.[2]?.trim();
+  if (hash && !HEX_64.test(hash)) {
+    console.warn("Ignoring rocket image with a malformed sha256 digest", { url, hash });
+    return undefined;
+  }
+  return hash ? { url, hash } : { url };
 }
 
 /** Parse one kind 31108 event into a rocket; returns undefined for events that cannot name a rocket. */
@@ -62,6 +88,7 @@ export function parseRocket(event: NostrEvent): Rocket | undefined {
     mission: tagValue(event, "mission"),
     problem: tagReference(event, "problem"),
     repo: tagReference(event, "repo"),
+    image: tagImage(event),
     createdAt: event.created_at,
     event
   };
@@ -82,6 +109,17 @@ export function rocketsFromEvents(events: readonly NostrEvent[]): Rocket[] {
     }
   }
   return [...latest.values()];
+}
+
+/** Lowercase hex sha256 of the exact bytes, in the form the `image` tag publishes. */
+export async function sha256Hex(bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** True when fetched bytes match the digest the rocket published; an image published without one cannot be checked. */
+export async function imageMatchesDigest(image: RocketImage, bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): Promise<boolean> {
+  return image.hash === undefined || await sha256Hex(bytes) === image.hash;
 }
 
 const byIdentifier = (left: RocketNode, right: RocketNode): number =>

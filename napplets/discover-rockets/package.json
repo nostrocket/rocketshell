@@ -6,7 +6,7 @@
   "napplet": {
     "dTag": "discover-rockets",
     "title": "Discover Rockets",
-    "requires": ["outbox"]
+    "requires": ["outbox", "resource"]
   },
   "scripts": {
     "dev": "vite build --watch",
