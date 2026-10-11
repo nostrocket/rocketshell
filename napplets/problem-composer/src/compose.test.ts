@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NostrEvent, RelayEventResult } from "@napplet/sdk";
-import { CHILD_CONVENTION, buildProblemTemplate, createProblemId, isChildPayload, normalizeProblemText, resolveParent } from "./problem";
+import { CHILD_CONVENTION, buildProblemTemplate, createProblemId, normalizeProblemText, resolveParent } from "./compose";
+import { isProblemIdPayload } from "./problem";
 
 const hex = (char: string) => char.repeat(64);
 const result = (event: Partial<NostrEvent> & Pick<NostrEvent, "id" | "pubkey" | "tags">): RelayEventResult => ({
@@ -28,9 +29,9 @@ describe("problem events", () => {
   });
 
   it("validates exact child intent payloads", () => {
-    expect(isChildPayload({ problemId: hex("a") })).toBe(true);
-    expect(isChildPayload({ problemId: hex("a"), owner: hex("b") })).toBe(false);
-    expect(isChildPayload({ problemId: "no" })).toBe(false);
+    expect(isProblemIdPayload({ problemId: hex("a") })).toBe(true);
+    expect(isProblemIdPayload({ problemId: hex("a"), owner: hex("b") })).toBe(false);
+    expect(isProblemIdPayload({ problemId: "no" })).toBe(false);
   });
 
   it("builds graph-root genesis tags", () => {

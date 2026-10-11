@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { bindParentEditor, parentCoordinatesFromEditor, renderParentOptions, renderParentRows } from "./parent-editor";
-import type { ParentOption } from "./problem";
+import type { ParentOption } from "./revise";
 
 const coordinate = (owner: string, id: string) => `31971:${owner.repeat(64)}:${id.repeat(64)}`;
 

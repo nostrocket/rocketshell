@@ -1,13 +1,22 @@
 {
-  "name": "@platform/edit-problem-napplet",
+  "name": "@platform/problem-composer-napplet",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "napplet": {
-    "dTag": "edit-problem",
-    "title": "Edit Problem",
-    "requires": ["identity", "outbox", "intent", "inc", "upload"],
-    "archetypes": [{ "slug": "composer", "convention": "napplet:composer/problem-edit" }]
+    "dTag": "problem-composer",
+    "title": "Problem Composer",
+    "requires": ["identity", "outbox", "inc", "intent", "upload"],
+    "archetypes": [
+      {
+        "slug": "composer",
+        "convention": "napplet:composer/problem-child"
+      },
+      {
+        "slug": "composer",
+        "convention": "napplet:composer/problem-edit"
+      }
+    ]
   },
   "scripts": {
     "dev": "vite build --watch",
@@ -25,6 +34,7 @@
   "devDependencies": {
     "@napplet/conformance-cli": "0.2.18",
     "@napplet/vite-plugin": "0.14.1",
+    "jsdom": "26.1.0",
     "typescript": "5.9.2",
     "vite": "7.1.3",
     "vitest": "3.2.4"

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { publishSuccessMessage } from "./publish-result";
+import { publishSuccessMessage, revisionPublishMessage } from "./publish-result";
 
 const event = { id: "ab".repeat(32) };
 
-describe("publishSuccessMessage", () => {
+describe("publishSuccessMessage (genesis)", () => {
   it("reports partial relay acceptance as a successful publish", () => {
     expect(publishSuccessMessage({
       ok: false,
@@ -20,5 +20,20 @@ describe("publishSuccessMessage", () => {
       relays: { "wss://one.example/": false },
       error: "publish denied"
     })).toThrow("publish denied");
+  });
+});
+
+describe("revisionPublishMessage", () => {
+  it("reports a full publish", () => {
+    expect(revisionPublishMessage({ ok: true, event })).toBe("Revision published · abababababab…");
+  });
+
+  it("names total relay refusal rather than a shell error", () => {
+    expect(() => revisionPublishMessage({
+      ok: false,
+      event,
+      relays: { "wss://one.example/": false, "wss://two.example/": false },
+      error: "publish denied"
+    })).toThrow("No relay accepted the revision (0 of 2)");
   });
 });

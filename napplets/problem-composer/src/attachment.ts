@@ -1,3 +1,4 @@
+/** Direct Markdown media reference shared by both composer modes. */
 export function attachmentMarkdown(url: string, caption: string): string {
   const cleanUrl = url.trim();
   if (!/^https:\/\/[^\s)]+$/.test(cleanUrl)) throw new Error("Upload returned an invalid media URL.");
