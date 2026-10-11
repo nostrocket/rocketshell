@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "sourceDir": ".",
+  "relays": [
+    "wss://nos.lol",
+    "wss://relay.damus.io",
+    "wss://relay.primal.net",
+    "wss://nostr.mom"
+  ],
+  "blossomServers": [
+    "https://blssm.us",
+    "https://blossom.primal.net"
+  ],
+  "defaultTarget": "named",
+  "named": [
+    "problem-composer"
+  ],
+  "discover": {
+    "enabled": true,
+    "roots": [
+      "."
+    ]
+  },
+  "signing": {
+    "mode": "interactive"
+  },
+  "conformance": {
+    "command": "napplet-conformance"
+  },
+  "paja": {
+    "command": "kehto"
+  },
+  "metadata": {
+    "name": "problem-composer",
+    "title": "Problem Composer",
+    "description": "Create, edit, and publish NIP-1971 problem records.",
+    "archetypes": [
+      {
+        "slug": "composer",
+        "convention": "napplet:composer/problem-child"
+      },
+      {
+        "slug": "composer",
+        "convention": "napplet:composer/problem-edit"
+      }
+    ]
+  }
+}

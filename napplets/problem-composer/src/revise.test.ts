@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NostrEvent, RelayEventResult } from "@napplet/sdk";
-import { EDIT_CONVENTION, buildRevisionTemplate, hasProblemChildren, isEditPayload, resolveParentChange, selectableParentOptions, selectEditableProblem } from "./problem";
+import { EDIT_CONVENTION, buildRevisionTemplate, resolveParentChange, selectableParentOptions, selectEditableProblem } from "./revise";
+import { hasProblemChildren, isProblemIdPayload } from "./problem";
 
 const hex = (char: string) => char.repeat(64);
 const owner = hex("a");
@@ -17,9 +18,9 @@ describe("problem editor", () => {
   it("uses stable composer edit convention", () => expect(EDIT_CONVENTION).toBe("napplet:composer/problem-edit"));
 
   it("accepts only exact problem-id payload", () => {
-    expect(isEditPayload({ problemId })).toBe(true);
-    expect(isEditPayload({ problemId, owner })).toBe(false);
-    expect(isEditPayload({ problemId: "bad" })).toBe(false);
+    expect(isProblemIdPayload({ problemId })).toBe(true);
+    expect(isProblemIdPayload({ problemId, owner })).toBe(false);
+    expect(isProblemIdPayload({ problemId: "bad" })).toBe(false);
   });
 
   it("selects only head and grants listed maintainer", () => {

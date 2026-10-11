@@ -1,10 +1,15 @@
-import type { EventTemplate, NostrEvent, RelayEventResult } from "@napplet/sdk";
+/*
+  Genesis composer logic: resolve a parent (or none) and build a kind-31971
+  root/child problem template. Extracted from the former log-new-problem
+  napplet, now sharing primitives with the revision editor.
+*/
+import type { EventTemplate, RelayEventResult } from "@napplet/sdk";
+import {
+  HEX_64, PROBLEM_KIND, relayHint, resolveAncestorOwners, selectCurrentHead,
+  tag, tagValue, type ChildDefaultStatus, type GenesisStatus
+} from "./problem";
 
-export const PROBLEM_KIND = 31971;
 export const CHILD_CONVENTION = "napplet:composer/problem-child";
-export const HEX_64 = /^[0-9a-f]{64}$/;
-
-export type ProblemStatus = "draft" | "rfm" | "big" | "children" | "open" | "closed";
 
 export interface ParentContext {
   problemId: string;
@@ -19,14 +24,14 @@ export interface ParentContext {
   rootOwner: string;
   rootRelay: string;
   ancestorOwners: string[];
-  defaultChildStatus: "rfm" | "open";
+  defaultChildStatus: ChildDefaultStatus;
 }
 
 export interface ProblemDraft {
   title: string;
   description: string;
-  status: ProblemStatus;
-  childStatus?: "rfm" | "open";
+  status: GenesisStatus;
+  childStatus?: ChildDefaultStatus;
   maintainers: string[];
   rocket?: { owner: string; id: string; relay: string };
   repository?: { owner: string; id: string; relay: string };
@@ -37,38 +42,6 @@ export function normalizeProblemText(title: string, description: string) {
   const normalizedTitle = title.trim();
   if (!normalizedTitle) throw new Error("Add a problem title.");
   return { title: normalizedTitle, description: description.trim() };
-}
-
-const tag = (event: NostrEvent, name: string, marker?: string) =>
-  event.tags.find((item) => item[0] === name && (marker === undefined || item[3] === marker));
-
-const tagValue = (event: NostrEvent, name: string, marker?: string) => tag(event, name, marker)?.[1];
-
-const selectCurrentHead = (candidates: RelayEventResult[]): RelayEventResult | undefined => {
-  const referenced = new Set(candidates.flatMap(({ event }) => event.tags
-    .filter((item) => item[0] === "e" && item[3] === "previous").map((item) => item[1])));
-  const eligible = candidates.filter(({ event }) => {
-    if (referenced.has(event.id)) return false;
-    const owner = tagValue(event, "a", "origin")?.split(":")[1] ?? "";
-    return event.pubkey === owner || event.tags.some((item) =>
-      item[0] === "p" && item[1] === event.pubkey && (item[3] === "maintainer" || item[3] === undefined));
-  });
-  if (!eligible.length) return undefined;
-  const newestTimestamp = Math.max(...eligible.map(({ event }) => event.created_at));
-  const newest = eligible.filter(({ event }) => event.created_at === newestTimestamp);
-  return newest.length === 1 ? newest[0] : undefined;
-};
-
-const relayHint = (result: RelayEventResult) =>
-  result.sidecar?.relayHints?.[0] ??
-  result.event.tags.find((item) => item.length > 2 && item[2]?.startsWith("wss://"))?.[2] ?? "";
-
-export function isChildPayload(payload: unknown): payload is { problemId: string } {
-  if (typeof payload !== "object" || payload === null) return false;
-  const keys = Object.keys(payload);
-  return keys.length === 1 && keys[0] === "problemId" &&
-    typeof (payload as { problemId?: unknown }).problemId === "string" &&
-    HEX_64.test((payload as { problemId: string }).problemId);
 }
 
 export function resolveParent(problemId: string, results: RelayEventResult[]): ParentContext {
@@ -112,40 +85,7 @@ export function resolveParent(problemId: string, results: RelayEventResult[]): P
   };
 }
 
-const currentHead = (coordinate: string, results: RelayEventResult[]): RelayEventResult => {
-  const problemId = coordinate.split(":")[2] ?? "";
-  const candidates = results.filter(({ event }) => event.kind === PROBLEM_KIND &&
-    tagValue(event, "d") === problemId && tagValue(event, "a", "origin") === coordinate);
-  if (!candidates.length) throw new Error(`Ancestor problem ${problemId} was not found.`);
-  const selected = selectCurrentHead(candidates);
-  if (!selected) throw new Error(`Ancestor problem ${problemId} has unresolved revision forks.`);
-  return selected;
-};
-
-export function resolveAncestorOwners(event: NostrEvent, results: RelayEventResult[]): string[] {
-  const owners = new Set<string>();
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  const visit = (coordinate: string) => {
-    if (visiting.has(coordinate)) throw new Error("Problem ancestry contains a cycle.");
-    if (visited.has(coordinate)) return;
-    visiting.add(coordinate);
-    const owner = coordinate.split(":")[1] ?? "";
-    if (!HEX_64.test(owner)) throw new Error("Ancestor problem owner is invalid.");
-    const head = currentHead(coordinate, results).event;
-    owners.add(owner);
-    for (const parent of head.tags
-      .filter((item) => item[0] === "a" && item[3] === undefined && /^31971:[0-9a-f]{64}:[0-9a-f]{64}$/.test(item[1] ?? ""))
-      .map((item) => item[1])) visit(parent);
-    visiting.delete(coordinate);
-    visited.add(coordinate);
-  };
-  for (const parent of event.tags
-    .filter((item) => item[0] === "a" && item[3] === undefined && /^31971:[0-9a-f]{64}:[0-9a-f]{64}$/.test(item[1] ?? ""))
-    .map((item) => item[1])) visit(parent);
-  return [...owners].sort();
-}
-
+/** Graph root for a parent problem, used to fetch the whole DAG before composing. */
 export function parentGraphRoot(problemId: string, results: RelayEventResult[]): string {
   const candidates = results.filter(({ event }) => event.kind === PROBLEM_KIND && tagValue(event, "d") === problemId);
   if (!candidates.length) throw new Error("Parent problem was not found.");

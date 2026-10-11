@@ -799,10 +799,10 @@ test("coordinate loader animates pending work", async ({ page }) => {
 test("refresh restores open installed napplets", async ({ page }) => {
   await page.goto("./");
   await expect(page.locator("#status")).toHaveText("Platform ready");
-  const coordinate = await page.evaluate(async () => (await window.__platformTest?.dockLaunchers())?.find((launcher) => launcher.dTag === "log-new-problem")?.coordinate);
+  const coordinate = await page.evaluate(async () => (await window.__platformTest?.dockLaunchers())?.find((launcher) => launcher.dTag === "problem-composer")?.coordinate);
   await page.evaluate((value) => localStorage.setItem("shell.pinned-napplets", JSON.stringify([value])), coordinate);
   await page.reload();
-  await page.getByRole("button", { name: "Open Log New Problem" }).click();
+  await page.getByRole("button", { name: "Open Problem Composer" }).click();
   await expect(page.locator(".napplet-window")).toHaveCount(2);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("shell.window-session.v2"))).not.toBeNull();
 
@@ -814,10 +814,10 @@ test("refresh restores open installed napplets", async ({ page }) => {
 test("refresh migrates legacy dock state without relay discovery", async ({ page }) => {
   await page.goto("./");
   await expect(page.locator("#status")).toHaveText("Platform ready");
-  const coordinate = await page.evaluate(async () => (await window.__platformTest?.dockLaunchers())?.find((launcher) => launcher.dTag === "log-new-problem")?.coordinate);
+  const coordinate = await page.evaluate(async () => (await window.__platformTest?.dockLaunchers())?.find((launcher) => launcher.dTag === "problem-composer")?.coordinate);
   await page.evaluate((value) => localStorage.setItem("shell.pinned-napplets", JSON.stringify([value])), coordinate);
   await page.reload();
-  await page.getByRole("button", { name: "Open Log New Problem" }).evaluate((button) => {
+  await page.getByRole("button", { name: "Open Problem Composer" }).evaluate((button) => {
     button.click();
     return new Promise<string>((resolve) => {
       const poll = (): void => {
@@ -833,7 +833,7 @@ test("refresh migrates legacy dock state without relay discovery", async ({ page
 
   await page.reload();
   await expect(page.locator(".napplet-window")).toHaveCount(2);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("shell.window-session.v2") ?? "null")?.windows?.[0]?.dTag)).toBe("log-new-problem");
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("shell.window-session.v2") ?? "null")?.windows?.[0]?.dTag)).toBe("problem-composer");
 });
 
 test("profile leads menu bar and built-in viewers open", async ({ page }) => {
@@ -1068,12 +1068,12 @@ test("edits new-problem Markdown inside packaged sandbox", async ({ page }) => {
   }, pubkey);
 
   await page.goto("./");
-  await expect(page.getByRole("button", { name: "Open Log New Problem" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Problem Composer" })).toBeVisible();
   await page.evaluate(() => window.__platformTest?.connectExtension());
-  await page.getByRole("button", { name: "Open Log New Problem" }).click();
-  const iframe = page.locator('iframe[title="log-new-problem"]');
+  await page.getByRole("button", { name: "Open Problem Composer" }).click();
+  const iframe = page.locator('iframe[title="problem-composer"]');
   await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
-  const frame = page.frameLocator('iframe[title="log-new-problem"]');
+  const frame = page.frameLocator('iframe[title="problem-composer"]');
   await expect(frame.getByRole("toolbar", { name: "Markdown formatting" })).toBeVisible();
   const boldButton = frame.getByRole("button", { name: "Bold" });
   await expect(boldButton).toBeEnabled();

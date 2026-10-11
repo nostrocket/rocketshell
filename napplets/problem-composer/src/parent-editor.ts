@@ -1,4 +1,4 @@
-import type { ParentOption } from "./problem";
+import type { ParentOption } from "./revise";
 
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 

@@ -44,9 +44,9 @@ Problem descriptions may contain direct Markdown media references:
 ![Screenshot](https://blossom.example/<hash>)
 ```
 
-`log-new-problem` and `edit-problem` require shell-owned NAP-UPLOAD, upload
-selected images or videos, and insert returned HTTPS URLs at textarea selection.
-Shell rejects these composers before load when upload capability is unavailable.
+`problem-composer` requires shell-owned NAP-UPLOAD, uploads selected images or
+videos, and inserts returned HTTPS URLs at textarea selection. Shell rejects this
+composer before load when upload capability is unavailable.
 
 `view-problem` resolves each Markdown media URL through NAP-RESOURCE rather than
 ambient browser networking. It renders content-sniffed images, MP4, and WebM

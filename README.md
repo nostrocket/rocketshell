@@ -120,10 +120,10 @@ external Napplets. See the [authoring spec](napplets/AUTHORING-SPEC.md) and
 
 ### Problem media attachments
 
-`log-new-problem` and `edit-problem` accept user-selected images and videos.
-They send file bytes to shell-owned NAP-UPLOAD; shell selects configured Blossom
-storage, signs authorization, and returns a public HTTPS URL. Composer inserts
-that URL directly into problem description using Markdown image syntax:
+`problem-composer` accepts user-selected images and videos. It sends file bytes
+to shell-owned NAP-UPLOAD; shell selects configured Blossom storage, signs
+authorization, and returns a public HTTPS URL. The composer inserts that URL
+directly into the problem description using Markdown image syntax:
 
 ```markdown
 ![Screenshot](https://blossom.example/<hash>)
@@ -131,8 +131,8 @@ that URL directly into problem description using Markdown image syntax:
 
 `view-problem` never loads remote media directly. It resolves Markdown media
 URLs through NAP-RESOURCE, creates temporary blob URLs, renders supported image
-or video controls, and revokes those URLs when view changes. Both composers
-declare NAP-UPLOAD as a hard manifest requirement; failed media reads remain
+or video controls, and revokes those URLs when view changes. The composer
+declares NAP-UPLOAD as a hard manifest requirement; failed media reads remain
 visible as diagnostic fallback text.
 
 ## Static deployment

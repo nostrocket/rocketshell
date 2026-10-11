@@ -1,0 +1,193 @@
+/*
+  Problem Composer stylesheet.
+
+  Two modes share one document, so every mode stylesheet is scoped under its
+  wrapper (`.mode-compose` / `.mode-revise`) and each mode owns a namespaced
+  custom-property set. Only the reset and focus ring are global.
+*/
+
+* { box-sizing: border-box; }
+html, body, #app { min-width: 280px; min-height: 100%; margin: 0; }
+button, input, textarea, select { font: inherit; }
+button { color: inherit; }
+code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: .78rem; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid #ffbf47;
+  outline-offset: 3px;
+}
+button:disabled { cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+/* ------------------------------------------------------------------ *
+ * Compose mode — field incident log (from log-new-problem)
+ * ------------------------------------------------------------------ */
+.mode-compose {
+  --c-ink: #102832;
+  --c-muted: #5c6b70;
+  --c-rule: #bdc8c9;
+  --c-paper: #f8faf9;
+  --c-signal: #f15a29;
+  --c-success: #176b52;
+  --c-error: #a52a2a;
+  min-height: 100vh;
+  color: var(--c-ink);
+  background: #e9edf0;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+}
+.mode-compose .sheet { width: 100%; min-height: 100vh; margin: 0 auto; padding: clamp(22px, 4vw, 64px); background: var(--c-paper); }
+.mode-compose .masthead { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 3px solid var(--c-ink); }
+.mode-compose h1 { margin: 4px 0 0; font-size: clamp(2rem, 7vw, 3.6rem); line-height: .98; letter-spacing: -.055em; font-weight: 760; }
+.mode-compose .eyebrow, .mode-compose .micro { margin: 0; color: var(--c-muted); font-size: .68rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.mode-compose .mode { flex: none; border: 1px solid var(--c-ink); padding: 6px 9px; font-size: .72rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.mode-compose .parent-card { margin: 18px 0 0; padding: 15px 17px; border-top: 3px solid var(--c-signal); background: #fff1eb; }
+.mode-compose .parent-card div { display: flex; gap: 9px; align-items: baseline; }
+.mode-compose .parent-card strong { font-size: .98rem; }
+.mode-compose .parent-card code { display: block; max-width: 100%; margin-top: 7px; overflow: hidden; color: #76412e; font-size: .7rem; text-overflow: ellipsis; }
+.mode-compose #problem-editor { padding-top: 30px; }
+.mode-compose .field { margin-bottom: 25px; }
+.mode-compose label, .mode-compose legend, .mode-compose .field-label { display: block; margin-bottom: 8px; font-size: .76rem; font-weight: 760; letter-spacing: .055em; text-transform: uppercase; }
+.mode-compose .field #description-editor { --md-border: var(--c-rule); --md-surface: #fff; --md-text: var(--c-ink); --md-muted: var(--c-muted); --md-accent: var(--c-signal); --md-error: var(--c-error); --md-radius: 0; --md-min-height: 290px; }
+.mode-compose .field #description-editor:focus-within .napplet-md-editor { border-color: var(--c-ink); box-shadow: 0 8px 22px rgba(16, 40, 50, .12); }
+.mode-compose input, .mode-compose textarea, .mode-compose select { width: 100%; border: 1px solid var(--c-rule); border-radius: 0; outline: none; color: var(--c-ink); background: #fff; }
+.mode-compose input, .mode-compose select { min-height: 46px; padding: 10px 12px; }
+.mode-compose textarea { padding: 13px 14px; resize: vertical; line-height: 1.55; }
+.mode-compose input:focus, .mode-compose textarea:focus, .mode-compose select:focus { border-color: var(--c-ink); box-shadow: 0 0 0 3px rgba(16, 40, 50, .12); }
+.mode-compose .hint { display: flex; justify-content: flex-end; margin-top: 6px; color: var(--c-muted); font-size: .75rem; }
+.mode-compose .hint output { margin-inline-end: .25em; }
+.mode-compose .field .hint:first-of-type { justify-content: flex-start; }
+.mode-compose .attachment-field { display: flex; align-items: center; min-width: 0; gap: 14px; margin: -8px 0 25px; }
+.mode-compose .attachment-field button { flex: none; min-height: 42px; border: 1px solid var(--c-ink); padding: 0 14px; color: var(--c-ink); background: transparent; font-weight: 720; cursor: pointer; }
+.mode-compose .attachment-field button:hover:not(:disabled) { color: #fff; background: var(--c-ink); }
+.mode-compose .attachment-field button:focus-visible { outline: 3px solid var(--c-signal); outline-offset: 3px; }
+.mode-compose .attachment-field button:disabled { cursor: not-allowed; opacity: .42; }
+.mode-compose .attachment-field span { color: var(--c-muted); font-size: .75rem; line-height: 1.4; }
+.mode-compose details { margin-top: 10px; border-top: 1px solid var(--c-rule); border-bottom: 1px solid var(--c-rule); }
+.mode-compose summary { display: flex; justify-content: space-between; padding: 17px 0; cursor: pointer; font-weight: 720; }
+.mode-compose .summary-note { color: var(--c-muted); font-size: .75rem; font-weight: 550; }
+.mode-compose .advanced-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; padding-top: 10px; }
+.mode-compose .span-2 { grid-column: 1 / -1; }
+.mode-compose fieldset { margin: 0 0 24px; padding: 18px; border: 1px solid var(--c-rule); }
+.mode-compose .context-row { display: grid; grid-template-columns: 80px 1fr 1fr 1fr; gap: 8px; margin-top: 9px; align-items: center; }
+.mode-compose .context-row span { color: var(--c-muted); font-size: .74rem; font-weight: 700; }
+.mode-compose .context-row input { min-width: 0; font-size: .78rem; }
+.mode-compose .context-row.bitcoin { grid-template-columns: 80px .55fr 1.45fr; }
+.mode-compose .action-rail { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 20px; margin: 32px -12px -20px; padding: 17px 12px 20px; border-top: 1px solid var(--c-rule); background: rgba(248, 250, 249, .96); backdrop-filter: blur(8px); }
+.mode-compose #status-line { color: var(--c-muted); font-size: .8rem; line-height: 1.35; }
+.mode-compose #status-line[data-state="error"] { color: var(--c-error); }
+.mode-compose #status-line[data-state="success"] { color: var(--c-success); font-weight: 700; }
+.mode-compose #publish { display: flex; flex: none; gap: 28px; align-items: center; min-height: 48px; padding: 0 17px; border: 0; color: white; background: var(--c-ink); font-weight: 760; cursor: pointer; }
+.mode-compose #publish:hover:not(:disabled) { background: #204653; }
+.mode-compose #publish:focus-visible { outline: 3px solid var(--c-signal); outline-offset: 3px; }
+.mode-compose #publish:disabled { cursor: not-allowed; opacity: .42; }
+@media (max-width: 620px) {
+  .mode-compose .sheet { padding: 22px 18px 28px; }
+  .mode-compose .advanced-grid { grid-template-columns: 1fr; }
+  .mode-compose .span-2 { grid-column: 1; }
+  .mode-compose .context-row, .mode-compose .context-row.bitcoin { grid-template-columns: 1fr; }
+  .mode-compose .context-row span { margin-top: 8px; }
+  .mode-compose .action-rail { position: static; align-items: stretch; flex-direction: column; margin: 28px 0 0; padding: 17px 0 0; }
+  .mode-compose #publish { justify-content: space-between; width: 100%; }
+  .mode-compose .attachment-field { align-items: stretch; flex-direction: column; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Revise mode — next-revision editor (from edit-problem)
+ * ------------------------------------------------------------------ */
+.mode-revise {
+  color-scheme: light dark;
+  --bg: #fff;
+  --fg: #171a21;
+  --accent: #145cff;
+  --accent-hover: color-mix(in srgb, var(--accent) 82%, var(--fg));
+  --surface: color-mix(in srgb, var(--bg) 96%, var(--fg));
+  --line: color-mix(in srgb, var(--fg) 14%, transparent);
+  --muted: color-mix(in srgb, var(--fg) 62%, transparent);
+  --error: #a32b2b;
+  min-height: 100vh;
+  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  background: var(--bg);
+  color: var(--fg);
+}
+.mode-revise ::selection { color: #fff; background: var(--accent); }
+.mode-revise .waiting { min-height: 100vh; display: grid; place-content: center; grid-template-columns: minmax(80px, 130px) minmax(0, 520px); gap: clamp(24px, 6vw, 70px); padding: clamp(24px, 8vw, 90px); }
+.mode-revise .waiting h1 { max-width: 12ch; margin: 0 0 .65rem; font-size: clamp(2.7rem, 8vw, 5.8rem); line-height: .94; letter-spacing: -.04em; }
+.mode-revise .waiting p:not(.eyebrow) { color: var(--muted); line-height: 1.6; }
+.mode-revise .mark { display: grid; align-content: center; gap: 9px; }
+.mode-revise .mark span { display: block; height: 5px; background: var(--line); transform-origin: left; }
+.mode-revise .mark span:nth-child(1) { width: 72%; }
+.mode-revise .mark span:nth-child(2) { width: 100%; background: var(--accent); }
+.mode-revise .mark span:nth-child(3) { width: 45%; }
+.mode-revise .editor-shell { width: 100%; min-height: 100vh; margin: auto; padding: 0 clamp(20px, 4vw, 64px) 42px; }
+.mode-revise .masthead { display: flex; justify-content: space-between; align-items: center; min-height: 72px; border-bottom: 1px solid var(--line); }
+.mode-revise .masthead strong { font-size: .9rem; }
+.mode-revise .masthead code { display: block; margin-top: 7px; color: var(--muted); }
+.mode-revise .authority { border-radius: 99px; padding: 7px 12px; font-size: .76rem; font-weight: 700; }
+.mode-revise .authority.allowed { color: #08744d; background: #e0f3e9; }
+.mode-revise .authority.denied { color: #59606e; background: #e8e9ed; }
+.mode-revise .workspace { padding-top: clamp(36px, 6vw, 68px); }
+.mode-revise .section-title { margin-bottom: 32px; }
+.mode-revise .section-title h1 { margin: 0; font-size: clamp(2.35rem, 5.4vw, 4.5rem); line-height: 1.02; letter-spacing: -.035em; text-wrap: balance; }
+.mode-revise .section-title p { max-width: 52ch; margin: 14px 0 0; color: var(--muted); line-height: 1.55; }
+.mode-revise .field { display: grid; gap: 8px; margin-bottom: 22px; }
+.mode-revise .field label, .mode-revise .field-label { font-size: .76rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.mode-revise .field #description-editor { --md-border: color-mix(in srgb, var(--fg) 24%, transparent); --md-surface: var(--surface); --md-text: var(--fg); --md-muted: var(--muted); --md-accent: var(--accent); --md-error: var(--error); --md-radius: 10px; --md-min-height: 220px; }
+.mode-revise .field #description-editor:focus-within .napplet-md-editor { border-color: var(--accent); box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 9%, transparent); }
+.mode-revise .hint { color: var(--muted); font-size: .78rem; line-height: 1.4; }
+.mode-revise .field input, .mode-revise .field textarea, .mode-revise .field select { width: 100%; border: 1px solid color-mix(in srgb, var(--fg) 24%, transparent); border-radius: 10px; background: var(--surface); color: var(--fg); padding: 14px 15px; caret-color: var(--accent); }
+.mode-revise .field input:hover:not(:disabled), .mode-revise .field textarea:hover:not(:disabled), .mode-revise .field select:hover:not(:disabled) { border-color: color-mix(in srgb, var(--fg) 42%, transparent); }
+.mode-revise .field input:focus, .mode-revise .field textarea:focus, .mode-revise .field select:focus { border-color: var(--accent); }
+.mode-revise .field input { font-size: 1.08rem; font-weight: 650; line-height: 1.25; }
+.mode-revise .field textarea { min-height: 220px; resize: vertical; line-height: 1.6; }
+.mode-revise .attachment-field { display: flex; align-items: center; gap: 14px; margin: -8px 0 26px; }
+.mode-revise .attachment-field button { flex: none; min-height: 42px; border: 1px solid var(--accent); border-radius: 10px; padding: 0 15px; color: var(--accent); background: transparent; font-weight: 720; cursor: pointer; }
+.mode-revise .attachment-field button:hover:not(:disabled) { color: #fff; background: var(--accent); }
+.mode-revise .attachment-field button:disabled { cursor: not-allowed; opacity: .46; }
+.mode-revise .attachment-field span { color: var(--muted); font-size: .78rem; line-height: 1.4; }
+.mode-revise .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.mode-revise .parent-editor { margin: 10px 0 30px; border-block: 1px solid var(--line); padding: 24px 0; }
+.mode-revise .parent-heading { display: flex; align-items: start; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
+.mode-revise .parent-heading h2 { margin: 0; font-size: 1.12rem; letter-spacing: -.015em; }
+.mode-revise .parent-heading p, .mode-revise .parent-empty { margin: 6px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+.mode-revise .parent-heading > span { flex: none; border-radius: 99px; padding: 5px 9px; background: var(--surface); color: var(--muted); font-size: .72rem; font-weight: 700; }
+.mode-revise .parent-list { display: grid; gap: 8px; }
+.mode-revise .parent-row { display: flex; align-items: center; gap: 12px; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 10px 11px 10px 13px; }
+.mode-revise .parent-row > span { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.mode-revise .parent-row strong { overflow: hidden; color: var(--fg); font-size: .9rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.mode-revise .parent-row code { color: var(--muted); }
+.mode-revise .parent-row button, .mode-revise .parent-add button { min-height: 38px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); padding: 0 13px; font-size: .78rem; font-weight: 720; cursor: pointer; }
+.mode-revise .parent-row button:hover:not(:disabled) { border-color: var(--error); color: var(--error); }
+.mode-revise .parent-add { display: grid; gap: 8px; margin-top: 16px; }
+.mode-revise .parent-add > label { font-size: .76rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.mode-revise .parent-add > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.mode-revise .parent-add select { min-width: 0; width: 100%; border: 1px solid color-mix(in srgb, var(--fg) 24%, transparent); border-radius: 10px; background: var(--surface); color: var(--fg); padding: 12px 40px 12px 14px; font-size: .9rem; }
+.mode-revise .parent-add select:hover:not(:disabled) { border-color: color-mix(in srgb, var(--fg) 42%, transparent); }
+.mode-revise .parent-add select:focus { border-color: var(--accent); }
+.mode-revise .parent-add button { min-height: 44px; border-color: var(--accent); color: var(--accent); }
+.mode-revise .parent-add button:hover:not(:disabled) { color: #fff; background: var(--accent); }
+.mode-revise .parent-add .hint { margin: 0; }
+.mode-revise footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; border-top: 1px solid var(--line); padding-top: 22px; }
+.mode-revise footer button { min-height: 50px; border: 0; border-radius: 10px; background: var(--accent); color: white; padding: 0 22px; font-weight: 750; cursor: pointer; }
+.mode-revise footer button:hover:not(:disabled) { background: var(--accent-hover); }
+.mode-revise footer button:active:not(:disabled) { transform: translateY(1px); }
+.mode-revise button:disabled { opacity: .46; cursor: not-allowed; }
+.mode-revise .status { min-height: 1.3em; margin: 0; color: var(--muted); font-size: .84rem; }
+.mode-revise .status[data-error="true"] { color: var(--error); }
+@media (max-width: 680px) {
+  .mode-revise .waiting { grid-template-columns: 1fr; align-content: center; }
+  .mode-revise .mark { width: 82px; }
+  .mode-revise .masthead { gap: 16px; }
+  .mode-revise .field-row { grid-template-columns: 1fr; }
+  .mode-revise .attachment-field { align-items: stretch; flex-direction: column; }
+  .mode-revise .parent-add > div { grid-template-columns: 1fr; }
+  .mode-revise .parent-add button { width: 100%; }
+  .mode-revise footer { align-items: stretch; flex-direction: column; }
+  .mode-revise footer button { width: 100%; min-height: 50px; }
+}
+@media (max-width: 360px) {
+  .mode-revise .editor-shell { padding: 14px; }
+  .mode-revise .authority { max-width: 110px; text-align: center; }
+  .mode-revise .waiting { padding: 18px; }
+  .mode-revise .waiting h1 { font-size: 2.2rem; }
+}
