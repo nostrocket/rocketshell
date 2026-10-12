@@ -6,7 +6,13 @@
   "napplet": {
     "dTag": "nostrocket-state",
     "title": "NOSTROCKET State",
-    "requires": ["outbox", "resource"]
+    "requires": ["inc", "outbox", "resource"],
+    "archetypes": [
+      {
+        "slug": "rocket",
+        "convention": "napplet:rocket/open"
+      }
+    ]
   },
   "scripts": {
     "dev": "vite build --watch",

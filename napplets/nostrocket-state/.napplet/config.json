@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "sourceDir": ".",
+  "relays": [
+    "wss://nos.lol",
+    "wss://relay.damus.io",
+    "wss://relay.primal.net",
+    "wss://nostr.mom",
+    "wss://relay.routstr.com"
+  ],
+  "blossomServers": [
+    "https://blssm.us",
+    "https://blossom.primal.net"
+  ],
+  "defaultTarget": "named",
+  "named": [
+    "nostrocket-state"
+  ],
+  "discover": {
+    "enabled": true,
+    "roots": [
+      "."
+    ]
+  },
+  "signing": {
+    "mode": "interactive"
+  },
+  "conformance": {
+    "command": "napplet-conformance"
+  },
+  "paja": {
+    "command": "kehto"
+  },
+  "metadata": {
+    "name": "nostrocket-state",
+    "title": "NOSTROCKET State",
+    "description": "Current NOSTROCKET merit holdings and Microsubjective Blockchain state.",
+    "archetypes": [
+      {
+        "slug": "rocket",
+        "convention": "napplet:rocket/open"
+      }
+    ]
+  }
+}
