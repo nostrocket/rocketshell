@@ -83,6 +83,7 @@ let pubkey = "";
 let parent: ParentContext | undefined;
 let childRequestPending = false;
 let intentSubscription: Subscription | undefined;
+let identitySubscription: Subscription | undefined;
 let parentSubscription: OutboxSubscription | undefined;
 let parentEvents: RelayEventResult[] = [];
 let parentLoadGeneration = 0;
@@ -96,6 +97,25 @@ const animate = (target: gsap.TweenTarget, vars: gsap.TweenVars) => {
 function setStatus(message: string, state: "idle" | "busy" | "error" | "success" = "idle") {
   statusLine.textContent = message;
   statusLine.dataset.state = state;
+}
+
+const identityReady = () => HEX_64.test(pubkey);
+
+function syncPublishAvailability() {
+  publishButton.disabled = !identityReady() || childRequestPending || (mode.textContent === "Child" && !parent);
+}
+
+function applyIdentity(next: string) {
+  const wasReady = identityReady();
+  pubkey = HEX_64.test(next) ? next : "";
+  syncPublishAvailability();
+  if (!identityReady()) {
+    setStatus("Sign in through shell to publish a problem.", "error");
+  } else if (!wasReady) {
+    setStatus(mode.textContent === "Child"
+      ? (parent ? "Parent resolved. Ready to publish child." : "Resolving parent…")
+      : "Ready to publish a root problem.");
+  }
 }
 
 function stopParentSubscription() {
@@ -183,7 +203,7 @@ async function loadParent(problemIdValue: string) {
     const status = document.querySelector<HTMLSelectElement>("#status")!;
     status.value = parent.defaultChildStatus;
     childRequestPending = false;
-    publishButton.disabled = !pubkey;
+    syncPublishAvailability();
     setStatus("Parent resolved. Ready to publish child.");
   } catch (error) {
     if (generation !== parentLoadGeneration) return;
@@ -275,12 +295,16 @@ async function uploadAttachment() {
     attachmentStatus.textContent = error instanceof Error ? error.message : "Media upload failed. Try again.";
   } finally {
     uploading = false;
-    publishButton.disabled = !pubkey || childRequestPending || (mode.textContent === "Child" && !parent);
+    syncPublishAvailability();
     attachmentInput.value = "";
   }
 }
 
 async function publishProblem() {
+  if (!identityReady()) {
+    setStatus("Sign in through shell to publish a problem.", "error");
+    return;
+  }
   if (childRequestPending || uploading) {
     if (uploading) setStatus("Wait for media upload to finish before publishing.", "busy");
     return;
@@ -308,7 +332,7 @@ async function publishProblem() {
     console.error("Problem publication failed", { mode: parent ? "child" : "root", parentProblemId: parent?.problemId, error });
     setStatus(error instanceof Error ? error.message : "Problem could not be published.", "error");
   } finally {
-    publishButton.disabled = !pubkey || childRequestPending || (mode.textContent === "Child" && !parent);
+    syncPublishAvailability();
   }
 }
 
@@ -332,15 +356,23 @@ async function start() {
       }
       void loadParent(event.payload.problemId);
     });
-    pubkey = await identity.getPublicKey() ?? "";
-    if (!HEX_64.test(pubkey)) throw new Error("Sign in through shell to publish a problem.");
-    publishButton.disabled = false;
-    setStatus("Ready to publish a root problem.");
-    animate(".sheet", { duration: 0.4 });
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Required shell capabilities are unavailable.", "error");
+    console.error("Child composer intent subscription failed", { convention: CHILD_CONVENTION, error });
+    setStatus("Shell intent delivery unavailable. Child requests will not open.", "error");
   }
+  try {
+    applyIdentity(await identity.getPublicKey() ?? "");
+  } catch (error) {
+    console.error("Shell identity initialization failed", { error });
+    setStatus("Shell identity unavailable; publishing is disabled.", "error");
+  }
+  try {
+    identitySubscription = identity.onChanged((next) => applyIdentity(next ?? ""));
+  } catch (error) {
+    console.warn("Shell identity change subscription failed; sign-in changes will not be reflected", { error });
+  }
+  animate(".sheet", { duration: 0.4 });
 }
 
-addEventListener("beforeunload", () => { markdownEditor.destroy(); parentSubscription?.close(); intentSubscription?.close(); });
+addEventListener("beforeunload", () => { markdownEditor.destroy(); parentSubscription?.close(); identitySubscription?.close(); intentSubscription?.close(); });
 void start();
