@@ -20,6 +20,8 @@ const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const number = new Intl.NumberFormat("en-US");
 const short = (value: string) => `${value.slice(0, 8)}…${value.slice(-8)}`;
 const escapeHtml = (value: string) => value.replace(/[&<>\"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" })[char]!);
+/** Relays that actually carry rocket state, used as hints rather than trusted routes. */
+const RELAY_HINTS = ["wss://nos.lol", "wss://relay.routstr.com", "wss://relay.redsh1ft.com"];
 let profiles = new Map<string, HolderProfile>();
 let avatarUrls = new Map<string, string>();
 let loadVersion = 0;
@@ -158,7 +160,8 @@ async function activateRocket(coordinate: string, relays: string[]): Promise<voi
   clearAvatars();
   const selected = rockets.find((rocket) => rocket.coordinate === coordinate);
   try {
-    const event = selected?.event ?? await firstMatchingState(outbox.subscribe as Parameters<typeof firstMatchingState>[0], coordinate, relays);
+    const stateRelays = [...new Set([...relays, ...RELAY_HINTS])];
+    const event = selected?.event ?? await firstMatchingState(outbox.subscribe as Parameters<typeof firstMatchingState>[0], coordinate, stateRelays);
     if (version !== loadVersion) return;
     validateStateEvent(event, coordinate);
     if (selected) selected.event = event;
@@ -202,7 +205,7 @@ async function load(): Promise<void> {
     if (!relays.length) console.warn("No suitable NIP-66 observations found; using shell author-outbox routing");
     currentRelays = relays;
     try {
-      const response = await outbox.query([{ kinds: [31108], limit: 500 }], { limit: 500, timeoutMs: 8000 });
+      const response = await outbox.query([{ kinds: [31108], limit: 500 }], { limit: 500, timeoutMs: 8000, relays: RELAY_HINTS });
       rockets = rocketsFromEvents(response.events.map(({ event }) => event as NostrEvent));
     } catch (error) {
       console.warn("Rocket discovery query failed; loading NOSTROCKET directly", { error });
@@ -211,7 +214,20 @@ async function load(): Promise<void> {
     if (version !== loadVersion) return;
     // An intent that arrived while discovery was running wins over the default.
     const preferred = requestedCoordinate ?? selectedCoordinate;
-    selectedCoordinate = rockets.some(({ coordinate }) => coordinate === preferred) ? preferred : NOSTROCKET_COORDINATE;
+    const preferredRocket = rockets.find(({ coordinate }) => coordinate === preferred);
+    if (preferredRocket) {
+      selectedCoordinate = preferred;
+    } else {
+      const firstWithEvent = rockets.find(({ event }) => event);
+      if (!firstWithEvent) {
+        showError(new Error(`No rockets were discovered; nothing to show for ${preferred}.`));
+        return;
+      }
+      selectedCoordinate = firstWithEvent.coordinate;
+      if (requestedCoordinate) {
+        console.warn("Requested rocket was not discovered; opening the first discovered rocket instead", { requested: requestedCoordinate, opening: selectedCoordinate });
+      }
+    }
     await activateRocket(selectedCoordinate, relays);
   } catch (error) { if (version === loadVersion) showError(error); }
   finally { initialLoadComplete = true; }

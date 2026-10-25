@@ -18,6 +18,5 @@ export function rocketsFromEvents(events: NostrEvent[]): RocketOption[] {
       latest.set(coordinate, { coordinate, name, author: event.pubkey, event });
     }
   }
-  if (!latest.has(NOSTROCKET_COORDINATE)) latest.set(NOSTROCKET_COORDINATE, { coordinate: NOSTROCKET_COORDINATE, name: "NOSTROCKET", author: NOSTROCKET_AUTHOR });
   return [...latest.values()].sort((left, right) => left.coordinate === NOSTROCKET_COORDINATE ? -1 : right.coordinate === NOSTROCKET_COORDINATE ? 1 : left.name.localeCompare(right.name) || left.coordinate.localeCompare(right.coordinate));
 }
